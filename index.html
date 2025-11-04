@@ -117,8 +117,14 @@
     };
 
     document.getElementById("startBtn").onclick = async () => {
-      await fetch(`${BACKEND_URL}/start-game/${roomId}`, { method: "POST" });
-    };
+  const url = `${BACKEND_URL}/start-game/${roomId}`;
+  console.log("🔍 Sending POST to:", url);
+  const res = await fetch(url, { method: "POST" });
+  console.log("🧾 Response status:", res.status);
+  const text = await res.text();
+  console.log("🧩 Raw response:", text);
+  alert("Status: " + res.status + "\nResponse: " + text);
+};
 
     document.getElementById("phaseBtn").onclick = async () => {
       await fetch(`${BACKEND_URL}/next-phase/${roomId}`, { method: "POST" });
