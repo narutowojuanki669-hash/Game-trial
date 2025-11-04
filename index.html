@@ -5,66 +5,38 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Town of Shadows</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #111;
-      color: #eee;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 20px;
-    }
-    h1 {
-      color: #f4b400;
-    }
-    button {
-      margin: 4px;
-      padding: 8px 16px;
-      border: none;
-      border-radius: 8px;
-      background: #333;
-      color: white;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    button:hover {
-      background: #555;
-    }
-    .box {
-      background: #222;
-      border: 1px solid #444;
-      border-radius: 6px;
-      padding: 6px;
-      text-align: center;
-    }
-    #grid {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 6px;
-      margin-top: 12px;
-    }
-    input {
-      margin-top: 8px;
-      padding: 6px;
-      border-radius: 6px;
-      border: none;
-      width: 75%;
-    }
+    body { font-family: Arial; background:#111; color:#eee; display:flex; flex-direction:column; align-items:center; padding:20px; }
+    h1 { color:#f4b400; }
+    button { margin:4px; padding:8px 16px; border:none; border-radius:8px; background:#333; color:white; cursor:pointer; }
+    button:hover { background:#555; }
+    .box { background:#222; border:1px solid #444; border-radius:6px; padding:6px; text-align:center; }
+    #grid { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin-top:12px; }
+    input { margin-top:8px; padding:6px; border-radius:6px; border:none; width:75%; }
   </style>
 </head>
 <body>
   <h1>Town of Shadows</h1>
   <div id="app"></div>
 
-  <!-- ✅ Game Script -->
+  <!-- ✅ Voting and Night Action Areas -->
+  <div id="voteArea" style="margin-top:15px;">
+    <h3>Day Actions</h3>
+    <select id="voteTarget"></select>
+    <button id="voteBtn">Vote</button>
+  </div>
+
+  <div id="nightArea" style="margin-top:15px;">
+    <h3>Night Actions</h3>
+    <select id="nightTarget"></select>
+    <button id="killBtn">Kill (Mafia)</button>
+  </div>
+
   <script type="module">
     import { TownOfShadowsWS } from "./wsClient.js";
-
     const BACKEND_URL = "https://town-of-shadows-server.onrender.com";
 
     const roomInput = prompt("Enter Room ID (or leave blank to create one):");
     let roomId = roomInput?.trim();
-
     if (!roomId) {
       const res = await fetch(`${BACKEND_URL}/create-room`, { method: "POST" });
       const data = await res.json();
@@ -94,14 +66,22 @@
       chatArea.append(div);
     };
 
+    async function updatePlayerLists(room) {
+      const alive = room.players.filter(p => p.alive);
+      const options = alive.map(p => `<option>${p.name}</option>`).join("");
+      document.getElementById("voteTarget").innerHTML = options;
+      document.getElementById("nightTarget").innerHTML = options;
+    }
+
     game.onRoomUpdate = (room) => {
       grid.innerHTML = "";
-      room.players.forEach((p) => {
+      room.players.forEach(p => {
         const box = document.createElement("div");
         box.className = "box";
         box.textContent = `${p.name} ${p.alive ? "🟩" : "💀"} ${p.symbol || ""}`;
         grid.append(box);
       });
+      updatePlayerLists(room);
     };
 
     game.onChat = (from, text) => {
@@ -115,63 +95,30 @@
       game.sendChat(input.value);
       input.value = "";
     };
-    <div id="voteArea" style="margin-top:15px;">
-  <h3>Day Actions</h3>
-  <select id="voteTarget"></select>
-  <button id="voteBtn">Vote</button>
-</div>
-
-<div id="nightArea" style="margin-top:15px;">
-  <h3>Night Actions</h3>
-  <select id="nightTarget"></select>
-  <button id="killBtn">Kill (Mafia)</button>
-</div>
 
     document.getElementById("startBtn").onclick = async () => {
-  const url = `${BACKEND_URL}/start-game/${roomId}`;
-  console.log("🔍 Sending POST to:", url);
-  const res = await fetch(url, { method: "POST" });
-  console.log("🧾 Response status:", res.status);
-  const text = await res.text();
-  console.log("🧩 Raw response:", text);
-  alert("Status: " + res.status + "\nResponse: " + text);
-};
+      const res = await fetch(`${BACKEND_URL}/start-game/${roomId}`, { method: "POST" });
+      const data = await res.json();
+      alert("Game started! " + data.message);
+    };
 
     document.getElementById("phaseBtn").onclick = async () => {
       await fetch(`${BACKEND_URL}/next-phase/${roomId}`, { method: "POST" });
     };
-    async function updatePlayerLists(room) {
-  const alive = room.players.filter(p => p.alive);
-  const options = alive.map(p => `<option>${p.name}</option>`).join("");
-  document.getElementById("voteTarget").innerHTML = options;
-  document.getElementById("nightTarget").innerHTML = options;
-}
 
-game.onRoomUpdate = (room) => {
-  const grid = document.getElementById("grid");
-  grid.innerHTML = "";
-  room.players.forEach(p => {
-    const box = document.createElement("div");
-    box.className = "box";
-    box.textContent = `${p.name} ${p.alive ? "🟩" : "💀"} ${p.symbol || ""}`;
-    grid.append(box);
-  });
-  updatePlayerLists(room);
-};
+    document.getElementById("voteBtn").onclick = async () => {
+      const target = document.getElementById("voteTarget").value;
+      const res = await fetch(`${BACKEND_URL}/vote?room_id=${roomId}&voter=${name}&target=${target}`, { method: "POST" });
+      const data = await res.json();
+      console.log("Vote result:", data);
+    };
 
-document.getElementById("voteBtn").onclick = async () => {
-  const target = document.getElementById("voteTarget").value;
-  const res = await fetch(`${BACKEND_URL}/vote?room_id=${roomId}&voter=${name}&target=${target}`, { method: "POST" });
-  const data = await res.json();
-  console.log("Vote result:", data);
-};
-
-document.getElementById("killBtn").onclick = async () => {
-  const target = document.getElementById("nightTarget").value;
-  const res = await fetch(`${BACKEND_URL}/night-action?room_id=${roomId}&actor=${name}&target=${target}`, { method: "POST" });
-  const data = await res.json();
-  console.log("Night action result:", data);
-};
+    document.getElementById("killBtn").onclick = async () => {
+      const target = document.getElementById("nightTarget").value;
+      const res = await fetch(`${BACKEND_URL}/night-action?room_id=${roomId}&actor=${name}&target=${target}`, { method: "POST" });
+      const data = await res.json();
+      console.log("Night action result:", data);
+    };
   </script>
 </body>
-  </html>
+</html>
