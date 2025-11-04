@@ -115,6 +115,17 @@
       game.sendChat(input.value);
       input.value = "";
     };
+    <div id="voteArea" style="margin-top:15px;">
+  <h3>Day Actions</h3>
+  <select id="voteTarget"></select>
+  <button id="voteBtn">Vote</button>
+</div>
+
+<div id="nightArea" style="margin-top:15px;">
+  <h3>Night Actions</h3>
+  <select id="nightTarget"></select>
+  <button id="killBtn">Kill (Mafia)</button>
+</div>
 
     document.getElementById("startBtn").onclick = async () => {
   const url = `${BACKEND_URL}/start-game/${roomId}`;
