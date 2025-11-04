@@ -1,21 +1,128 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Town of Shadows</title>
-    <style>
-      body {
-        background-color: #0d0d0d;
-        color: white;
-        font-family: sans-serif;
-      }
-    </style>
-  </head>
-  <body>
-    <script type="module">
-      import { testConnection } from './api.js';
-      testConnection();
-    </script>
-  </body>
-</html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Town of Shadows</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #eee;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    h1 {
+      color: #f4b400;
+    }
+    button {
+      margin: 4px;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 8px;
+      background: #333;
+      color: white;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #555;
+    }
+    .box {
+      background: #222;
+      border: 1px solid #444;
+      border-radius: 6px;
+      padding: 6px;
+      text-align: center;
+    }
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
+      margin-top: 12px;
+    }
+    input {
+      margin-top: 8px;
+      padding: 6px;
+      border-radius: 6px;
+      border: none;
+      width: 75%;
+    }
+  </style>
+</head>
+<body>
+  <h1>Town of Shadows</h1>
+  <div id="app"></div>
+
+  <!-- ✅ Game Script -->
+  <script type="module">
+    import { TownOfShadowsWS } from "./wsClient.js";
+
+    const BACKEND_URL = "https://town-of-shadows-server.onrender.com";
+
+    const roomInput = prompt("Enter Room ID (or leave blank to create one):");
+    let roomId = roomInput?.trim();
+
+    if (!roomId) {
+      const res = await fetch(`${BACKEND_URL}/create-room`, { method: "POST" });
+      const data = await res.json();
+      roomId = data.roomId;
+      alert("Created Room: " + roomId);
+    }
+
+    const name = prompt("Enter your player name:") || "Player";
+    const game = new TownOfShadowsWS(roomId, name);
+    game.connect();
+
+    document.getElementById("app").innerHTML = `
+      <button id="startBtn">Start Game</button>
+      <button id="phaseBtn">Next Phase</button>
+      <div id="grid"></div>
+      <input id="chatInput" placeholder="Type a message...">
+      <button id="sendChat">Send</button>
+      <div id="chatArea"></div>
+    `;
+
+    const grid = document.getElementById("grid");
+    const chatArea = document.getElementById("chatArea");
+
+    game.onSystem = (msg) => {
+      const div = document.createElement("div");
+      div.textContent = "🟢 " + msg;
+      chatArea.append(div);
+    };
+
+    game.onRoomUpdate = (room) => {
+      grid.innerHTML = "";
+      room.players.forEach((p) => {
+        const box = document.createElement("div");
+        box.className = "box";
+        box.textContent = `${p.name} ${p.alive ? "🟩" : "💀"} ${p.symbol || ""}`;
+        grid.append(box);
+      });
+    };
+
+    game.onChat = (from, text) => {
+      const div = document.createElement("div");
+      div.textContent = `${from}: ${text}`;
+      chatArea.append(div);
+    };
+
+    document.getElementById("sendChat").onclick = () => {
+      const input = document.getElementById("chatInput");
+      game.sendChat(input.value);
+      input.value = "";
+    };
+
+    document.getElementById("startBtn").onclick = async () => {
+      await fetch(`${BACKEND_URL}/start-game/${roomId}`, { method: "POST" });
+    };
+
+    document.getElementById("phaseBtn").onclick = async () => {
+      await fetch(`${BACKEND_URL}/next-phase/${roomId}`, { method: "POST" });
+    };
+  </script>
+</body>
+  </html>
