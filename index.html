@@ -8,5 +8,9 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+ <script type="module">
+  import { testConnection } from './api.js';
+  testConnection().then(msg => console.log('Backend says:', msg));
+    </script>
   </body>
 </html>
