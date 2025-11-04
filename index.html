@@ -1,124 +1,183 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Town of Shadows</title>
   <style>
-    body { font-family: Arial; background:#111; color:#eee; display:flex; flex-direction:column; align-items:center; padding:20px; }
-    h1 { color:#f4b400; }
-    button { margin:4px; padding:8px 16px; border:none; border-radius:8px; background:#333; color:white; cursor:pointer; }
-    button:hover { background:#555; }
-    .box { background:#222; border:1px solid #444; border-radius:6px; padding:6px; text-align:center; }
-    #grid { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin-top:12px; }
-    input { margin-top:8px; padding:6px; border-radius:6px; border:none; width:75%; }
+    body{font-family:Arial,Helvetica,sans-serif;background:#0b0b0f;color:#eee;display:flex;flex-direction:column;align-items:center;padding:16px}
+    h1{color:#f4b400}
+    button{margin:4px;padding:8px 12px;border-radius:8px;border:none;background:#2b2b2b;color:#fff;cursor:pointer}
+    #grid{display:grid;grid-template-columns:repeat(5,120px);gap:8px;margin-top:12px}
+    .box{background:#131318;border:1px solid #2a2a2a;padding:8px;border-radius:6px;text-align:center}
+    #chatArea{width:100%;max-width:760px;margin-top:10px;min-height:80px;border-top:1px solid #222;padding-top:8px}
+    input,select{padding:6px;border-radius:6px;border:none}
+    #roleActions{margin-top:10px}
   </style>
 </head>
 <body>
   <h1>Town of Shadows</h1>
-  <div id="app"></div>
+  <div id="appArea"></div>
 
-  <!-- ✅ Voting and Night Action Areas -->
-  <div id="voteArea" style="margin-top:15px;">
-    <h3>Day Actions</h3>
+  <!-- UI areas that will be filled by script -->
+  <div id="voteArea" style="margin-top:12px;display:flex;gap:8px;align-items:center">
     <select id="voteTarget"></select>
     <button id="voteBtn">Vote</button>
+    <button id="startBtn">Start Game</button>
+    <button id="phaseBtn">Next Phase</button>
   </div>
 
-  <div id="nightArea" style="margin-top:15px;">
-    <h3>Night Actions</h3>
-    <select id="nightTarget"></select>
-    <button id="killBtn">Kill (Mafia)</button>
+  <div id="roleActions"></div>
+
+  <div id="grid"></div>
+
+  <div style="margin-top:8px;width:100%;max-width:760px;display:flex;gap:8px">
+    <input id="chatInput" placeholder="Type a message..." style="flex:1">
+    <button id="sendChat">Send</button>
   </div>
 
-  <script type="module">
-    import { TownOfShadowsWS } from "./wsClient.js";
-    const BACKEND_URL = "https://town-of-shadows-server.onrender.com";
+  <div id="chatArea"></div>
 
-    const roomInput = prompt("Enter Room ID (or leave blank to create one):");
-    let roomId = roomInput?.trim();
-    if (!roomId) {
-      const res = await fetch(`${BACKEND_URL}/create-room`, { method: "POST" });
-      const data = await res.json();
-      roomId = data.roomId;
-      alert("Created Room: " + roomId);
-    }
+<script type="module">
+import { TownOfShadowsWS } from "./wsClient.js";
 
-    const name = prompt("Enter your player name:") || "Player";
-    const game = new TownOfShadowsWS(roomId, name);
-    game.connect();
+const BACKEND_URL = "https://town-of-shadows-server.onrender.com";
 
-    document.getElementById("app").innerHTML = `
-      <button id="startBtn">Start Game</button>
-      <button id="phaseBtn">Next Phase</button>
-      <div id="grid"></div>
-      <input id="chatInput" placeholder="Type a message...">
-      <button id="sendChat">Send</button>
-      <div id="chatArea"></div>
-    `;
+// ask for room (create if blank)
+let roomInput = prompt("Enter Room ID (or leave blank to create a new room):");
+let roomId = roomInput?.trim();
+if (!roomId) {
+  const res = await fetch(`${BACKEND_URL}/create-room`, { method: "POST" });
+  const data = await res.json();
+  roomId = data.roomId;
+  alert("Created Room: " + roomId);
+}
 
-    const grid = document.getElementById("grid");
-    const chatArea = document.getElementById("chatArea");
+const name = prompt("Enter display name:") || "Player";
+const game = new TownOfShadowsWS(roomId, name);
+game.connect();
 
-    game.onSystem = (msg) => {
-      const div = document.createElement("div");
-      div.textContent = "🟢 " + msg;
-      chatArea.append(div);
-    };
+// UI refs
+const grid = document.getElementById("grid");
+const chatArea = document.getElementById("chatArea");
+const voteTarget = document.getElementById("voteTarget");
+const nightTarget = null; // night actions use role-specific UI
+const roleActions = document.getElementById("roleActions");
 
-    async function updatePlayerLists(room) {
-      const alive = room.players.filter(p => p.alive);
-      const options = alive.map(p => `<option>${p.name}</option>`).join("");
-      document.getElementById("voteTarget").innerHTML = options;
-      document.getElementById("nightTarget").innerHTML = options;
-    }
+// helper to append system/chat
+function pushMessage(text) {
+  const d = document.createElement("div"); d.textContent = text; chatArea.appendChild(d);
+  chatArea.scrollTop = chatArea.scrollHeight;
+}
 
-    game.onRoomUpdate = (room) => {
-      grid.innerHTML = "";
-      room.players.forEach(p => {
-        const box = document.createElement("div");
-        box.className = "box";
-        box.textContent = `${p.name} ${p.alive ? "🟩" : "💀"} ${p.symbol || ""}`;
-        grid.append(box);
-      });
-      updatePlayerLists(room);
-    };
+// When we get room updates render grid & dropdown
+game.onRoomUpdate = (room) => {
+  grid.innerHTML = "";
+  room.players.forEach(p => {
+    const box = document.createElement("div");
+    box.className = "box";
+    box.innerHTML = `<strong>${p.name}</strong><div>${p.alive ? "🟩 Alive" : "💀 Dead"}</div><div>${p.symbol || ""}</div>`;
+    grid.appendChild(box);
+  });
+  // fill vote dropdown with alive players
+  const alive = room.players.filter(p => p.alive);
+  voteTarget.innerHTML = alive.map(p => `<option>${p.name}</option>`).join("");
+};
 
-    game.onChat = (from, text) => {
-      const div = document.createElement("div");
-      div.textContent = `${from}: ${text}`;
-      chatArea.append(div);
-    };
+// system messages
+game.onSystem = (msg) => { pushMessage("🔔 " + msg) }
 
-    document.getElementById("sendChat").onclick = () => {
-      const input = document.getElementById("chatInput");
-      game.sendChat(input.value);
-      input.value = "";
-    };
+// chat
+game.onChat = (from, text) => { pushMessage(`${from}: ${text}`) }
 
-    document.getElementById("startBtn").onclick = async () => {
-      const res = await fetch(`${BACKEND_URL}/start-game/${roomId}`, { method: "POST" });
-      const data = await res.json();
-      alert("Game started! " + data.message);
-    };
+// when private role arrives, show role UI
+let myRole = null;
+game.onPrivateRole = (obj) => {
+  myRole = obj.role;
+  pushMessage(`(Private) Your role: ${obj.role} — ${obj.explain || ""}`);
+  renderRoleControls();
+}
 
-    document.getElementById("phaseBtn").onclick = async () => {
-      await fetch(`${BACKEND_URL}/next-phase/${roomId}`, { method: "POST" });
-    };
+// send chat
+document.getElementById("sendChat").onclick = () => {
+  const t = document.getElementById("chatInput").value;
+  if (t) { game.sendChat(t); document.getElementById("chatInput").value = ""; }
+};
 
-    document.getElementById("voteBtn").onclick = async () => {
-      const target = document.getElementById("voteTarget").value;
-      const res = await fetch(`${BACKEND_URL}/vote?room_id=${roomId}&voter=${name}&target=${target}`, { method: "POST" });
-      const data = await res.json();
-      console.log("Vote result:", data);
-    };
+// start game button (POST)
+document.getElementById("startBtn").onclick = async () => {
+  const res = await fetch(`${BACKEND_URL}/start-game/${roomId}`, { method: "POST" });
+  const txt = await res.text(); pushMessage("Start: " + txt);
+};
 
-    document.getElementById("killBtn").onclick = async () => {
-      const target = document.getElementById("nightTarget").value;
-      const res = await fetch(`${BACKEND_URL}/night-action?room_id=${roomId}&actor=${name}&target=${target}`, { method: "POST" });
-      const data = await res.json();
-      console.log("Night action result:", data);
-    };
-  </script>
+// next phase
+document.getElementById("phaseBtn").onclick = async () => {
+  const res = await fetch(`${BACKEND_URL}/next-phase/${roomId}`, { method: "POST" });
+  const txt = await res.text(); pushMessage("NextPhase: " + txt);
+};
+
+// vote button (sends WS vote using slotless model; backend supports by name)
+document.getElementById("voteBtn").onclick = () => {
+  const target = voteTarget.value;
+  game.send({ type: "vote", slot: null, target });
+};
+
+// role controls rendering
+function renderRoleControls() {
+  roleActions.innerHTML = "";
+  if (!myRole) return;
+  const title = document.createElement("div");
+  title.textContent = `Your role: ${myRole}`;
+  roleActions.appendChild(title);
+
+  // Cupid
+  if (myRole === "Cupid") {
+    const inp = document.createElement("input"); inp.placeholder = "Name to link (lover)";
+    const btn = document.createElement("button"); btn.textContent = "Link (Cupid)";
+    btn.onclick = () => { const tgt = inp.value.trim(); if (tgt) game.queueAction(name, tgt, "cupid_link"); }
+    roleActions.appendChild(inp); roleActions.appendChild(btn);
+  }
+
+  // Janitor
+  if (myRole === "Janitor") {
+    const inp = document.createElement("input"); inp.placeholder = "Corpse name to clean";
+    const btn = document.createElement("button"); btn.textContent = "Clean (Janitor)";
+    btn.onclick = () => { const tgt = inp.value.trim(); if (tgt) game.queueAction(name, tgt, "janitor_clean"); }
+    roleActions.appendChild(inp); roleActions.appendChild(btn);
+  }
+
+  // Executioner
+  if (myRole === "Executioner") {
+    const inp = document.createElement("input"); inp.placeholder = "Set target name";
+    const btn = document.createElement("button"); btn.textContent = "Set Target (Executioner)";
+    btn.onclick = () => { const tgt = inp.value.trim(); if (tgt) game.queueAction(name, tgt, "executioner_set"); }
+    roleActions.appendChild(inp); roleActions.appendChild(btn);
+  }
+
+  // Doctor
+  if (myRole === "Doctor") {
+    const inp = document.createElement("input"); inp.placeholder = "Name to heal";
+    const btn = document.createElement("button"); btn.textContent = "Heal (Doctor)";
+    btn.onclick = () => { const tgt = inp.value.trim(); if (tgt) game.queueAction(name, tgt, "doctor_heal"); }
+    roleActions.appendChild(inp); roleActions.appendChild(btn);
+  }
+
+  // Mafioso / Killer: Kill button
+  if (myRole === "Mafioso" || myRole === "Godfather" || myRole === "Beastman") {
+    const inp = document.createElement("input"); inp.placeholder = "Target name to kill";
+    const btn = document.createElement("button"); btn.textContent = "Kill (Mafia)";
+    btn.onclick = () => { const tgt = inp.value.trim(); if (tgt) game.queueAction(name, tgt, "mafia_kill"); }
+    roleActions.appendChild(inp); roleActions.appendChild(btn);
+  }
+
+  // Serial Killer
+  if (myRole === "Serial Killer") {
+    const inp = document.createElement("input"); inp.placeholder = "Target name";
+    const btn = document.createElement("button"); btn.textContent = "Kill (SK)";
+    btn.onclick = () => { const tgt = inp.value.trim(); if (tgt) game.queueAction(name, tgt, "serial_kill"); }
+    roleActions.appendChild(inp); roleActions.appendChild(btn);
+  }
+}
+</script>
 </body>
-</html>
+  </html>
