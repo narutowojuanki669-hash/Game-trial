@@ -140,6 +140,38 @@
     document.getElementById("phaseBtn").onclick = async () => {
       await fetch(`${BACKEND_URL}/next-phase/${roomId}`, { method: "POST" });
     };
+    async function updatePlayerLists(room) {
+  const alive = room.players.filter(p => p.alive);
+  const options = alive.map(p => `<option>${p.name}</option>`).join("");
+  document.getElementById("voteTarget").innerHTML = options;
+  document.getElementById("nightTarget").innerHTML = options;
+}
+
+game.onRoomUpdate = (room) => {
+  const grid = document.getElementById("grid");
+  grid.innerHTML = "";
+  room.players.forEach(p => {
+    const box = document.createElement("div");
+    box.className = "box";
+    box.textContent = `${p.name} ${p.alive ? "🟩" : "💀"} ${p.symbol || ""}`;
+    grid.append(box);
+  });
+  updatePlayerLists(room);
+};
+
+document.getElementById("voteBtn").onclick = async () => {
+  const target = document.getElementById("voteTarget").value;
+  const res = await fetch(`${BACKEND_URL}/vote?room_id=${roomId}&voter=${name}&target=${target}`, { method: "POST" });
+  const data = await res.json();
+  console.log("Vote result:", data);
+};
+
+document.getElementById("killBtn").onclick = async () => {
+  const target = document.getElementById("nightTarget").value;
+  const res = await fetch(`${BACKEND_URL}/night-action?room_id=${roomId}&actor=${name}&target=${target}`, { method: "POST" });
+  const data = await res.json();
+  console.log("Night action result:", data);
+};
   </script>
 </body>
   </html>
