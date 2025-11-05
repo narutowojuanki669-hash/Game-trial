@@ -10,23 +10,33 @@
     button{margin:4px;padding:8px 12px;border-radius:8px;border:none;background:#2b2b2b;color:#fff;cursor:pointer}
     #grid{display:grid;grid-template-columns:repeat(5,120px);gap:8px;margin-top:12px}
     .box{background:#131318;border:1px solid #2a2a2a;padding:8px;border-radius:6px;text-align:center}
-    #chatArea{width:100%;max-width:760px;margin-top:10px;min-height:80px;border-top:1px solid #222;padding-top:8px}
-    input,select{padding:6px;border-radius:6px;border:none}
+    #chatArea{width:100%;max-width:760px;margin-top:10px;min-height:120px;border-top:1px solid #222;padding-top:8px;overflow:auto}
+    input,select{padding:6px;border-radius:6px;border:none;background:#1a1a1a;color:#eee}
     #roleActions{margin-top:10px}
-    .phaseBar{margin-top:8px;padding:8px;border-radius:6px;background:#16161a;width:100%;max-width:760px;text-align:center}
+    .phaseBar{margin-top:8px;padding:8px;border-radius:6px;background:#16161a;width:100%;max-width:760px;text-align:center;display:flex;justify-content:space-between;align-items:center}
     .countdown{font-weight:bold}
+    #phaseMeter{height:10px;background:#2a2a2a;border-radius:6px;overflow:hidden;margin-top:6px}
+    #phaseFill{height:100%;width:0%;background:green;transition:width 0.5s linear}
+    .muted{opacity:0.6}
   </style>
 </head>
 <body>
   <h1>Town of Shadows</h1>
 
   <div class="phaseBar">
-    Phase: <span id="phaseName">—</span> | Time left: <span id="phaseTime" class="countdown">—</span>
+    <div>
+      <span id="phaseName">—</span> — <span id="subphaseName">—</span>
+    </div>
+    <div>
+      Time left: <span id="phaseTime" class="countdown">—</span>
+    </div>
   </div>
+  <div id="phaseMeter"><div id="phaseFill"></div></div>
 
-  <div id="controls" style="margin-top:8px;">
+  <div style="margin-top:8px">
     <button id="startBtn">Start Game</button>
-    <button id="skipPhaseBtn">Skip Phase</button>
+    <button id="skipPhaseBtn">Skip Phase (admin)</button>
+    <span id="mySlotDisplay"></span>
   </div>
 
   <div id="roleActions"></div>
@@ -35,6 +45,7 @@
 
   <div style="margin-top:8px;width:100%;max-width:760px;display:flex;gap:8px">
     <input id="chatInput" placeholder="Type a message..." style="flex:1">
+    <select id="chatChannel"><option value="public">Public</option><option value="mafia">Mafia</option><option value="cult">Cult</option><option value="lovers">Lovers</option><option value="medium">Medium</option></select>
     <button id="sendChat">Send</button>
   </div>
 
@@ -45,7 +56,7 @@ import { TownOfShadowsWS } from "./wsClient.js";
 
 const BACKEND_URL = "https://town-of-shadows-server.onrender.com";
 
-// create/join room
+// create or join room
 let roomInput = prompt("Enter Room ID (or leave blank to create a new room):");
 let roomId = roomInput?.trim();
 if (!roomId) {
@@ -64,15 +75,19 @@ const grid = document.getElementById("grid");
 const chatArea = document.getElementById("chatArea");
 const roleActions = document.getElementById("roleActions");
 const phaseName = document.getElementById("phaseName");
+const subphaseName = document.getElementById("subphaseName");
 const phaseTime = document.getElementById("phaseTime");
+const phaseFill = document.getElementById("phaseFill");
+const chatInput = document.getElementById("chatInput");
+const chatChannel = document.getElementById("chatChannel");
+const mySlotDisplay = document.getElementById("mySlotDisplay");
 
-// helper
-function pushMessage(text) {
-  const d = document.createElement("div"); d.textContent = text; chatArea.appendChild(d);
-  chatArea.scrollTop = chatArea.scrollHeight;
+// simple helper
+function pushMessage(text, cls) {
+  const d = document.createElement("div"); d.textContent = text; if (cls) d.className = cls; chatArea.appendChild(d); chatArea.scrollTop = chatArea.scrollHeight;
 }
 
-// handle room updates: render grid
+// room updates
 game.onRoomUpdate = (room) => {
   grid.innerHTML = "";
   room.players.forEach(p => {
@@ -83,121 +98,172 @@ game.onRoomUpdate = (room) => {
   });
 };
 
-// system messages
+// system
 game.onSystem = (msg) => { pushMessage("🔔 " + msg) }
 
-// chats
-game.onChat = (from, text) => { pushMessage(`${from}: ${text}`) }
+// chat
+game.onChat = (from, text, channel) => {
+  let prefix = "";
+  if (channel === "mafia") prefix = "[Mafia] ";
+  else if (channel === "cult") prefix = "[Cult] ";
+  else if (channel === "lovers") prefix = "[Lovers] ";
+  else if (channel === "medium") prefix = "[Medium↔Dead] ";
+  pushMessage(prefix + from + ": " + text);
+}
 
-// phase updates (from server)
+// phase updates
+let currentPhaseTotal = 1;
+let currentPhaseRemaining = 0;
 game.onPhase = (p) => {
-  phaseName.textContent = p.phase || "—";
-  if (typeof p.seconds !== 'undefined') phaseTime.textContent = p.seconds + "s";
-  // control chat / actions in UI based on phase (frontend disables chat input during night/public restrictions)
-  if (p.phase === "night") {
-    document.getElementById("chatInput").disabled = true;
+  // p might contain 'phase' or only 'seconds'
+  const phase = p.phase || "unknown";
+  phaseName.textContent = phase;
+  // map subphase names
+  if (phase === "discussion") subphaseName.textContent = "Discussion";
+  else if (phase === "voting") subphaseName.textContent = "Voting";
+  else if (phase === "defence") subphaseName.textContent = "Defence";
+  else if (phase === "final") subphaseName.textContent = "Final Decision";
+  else if (phase === "night") subphaseName.textContent = "Night Actions";
+  else subphaseName.textContent = "";
+  if (typeof p.seconds !== 'undefined') {
+    currentPhaseRemaining = p.seconds;
+    phaseTime.textContent = currentPhaseRemaining + "s";
+    // compute total for fill bar heuristically based on phase
+    if (phase === "discussion") currentPhaseTotal = 60;
+    else if (phase === "voting") currentPhaseTotal = 20;
+    else if (phase === "defence") currentPhaseTotal = 10;
+    else if (phase === "final") currentPhaseTotal = 10;
+    else if (phase === "night") currentPhaseTotal = 40;
+    else currentPhaseTotal = Math.max(currentPhaseRemaining, 1);
+    const pct = Math.max(0, Math.min(100, Math.round((currentPhaseRemaining / currentPhaseTotal) * 100)));
+    phaseFill.style.width = pct + "%";
+    // color shift
+    if (pct > 66) phaseFill.style.background = "green";
+    else if (pct > 33) phaseFill.style.background = "orange";
+    else phaseFill.style.background = "red";
+  }
+  // chat enabling/disabling
+  if (phase === "night") {
+    chatInput.disabled = true; chatChannel.disabled = true;
   } else {
-    document.getElementById("chatInput").disabled = false;
+    chatInput.disabled = false; chatChannel.disabled = false;
   }
 };
 
-// private role arrives -> render role controls for that human
+// private role arrives
 let myRole = null;
-let myName = name;
+let mySlot = null;
 game.onPrivateRole = (obj) => {
   myRole = obj.role;
-  pushMessage(`(PRIVATE) Your role: ${obj.role} — ${obj.explain || ""}`);
+  mySlot = obj.slot;
+  mySlotDisplay.textContent = ` | Slot ${mySlot}`;
+  pushMessage("(PRIVATE) Your role: " + obj.role + " — " + (obj.explain || ""));
   renderRoleControls();
 };
 
-// send chat
+// chat send
 document.getElementById("sendChat").onclick = () => {
-  const t = document.getElementById("chatInput").value;
-  if (!t) return;
-  game.sendChat(t);
-  document.getElementById("chatInput").value = "";
+  const txt = chatInput.value.trim();
+  if (!txt) return;
+  const channel = chatChannel.value || "public";
+  game.sendChat(txt, channel);
+  chatInput.value = "";
 };
 
-// start game by sending ws start_game
+// start game
 document.getElementById("startBtn").onclick = () => {
   game.startGame();
 };
 
-// skip phase (admin / host control) - also useful for testing
+// skip phase for testing/admin
 document.getElementById("skipPhaseBtn").onclick = async () => {
   const res = await fetch(`${BACKEND_URL}/next-phase/${roomId}`, { method: "POST" });
-  const txt = await res.text(); pushMessage("SkipPhase: " + txt);
+  const txt = await res.text(); pushMessage("Admin: " + txt);
 };
 
-// render role controls (human-only buttons)
+// render role-specific controls
 function renderRoleControls() {
   roleActions.innerHTML = "";
   if (!myRole) return;
-  const title = document.createElement("div");
-  title.textContent = `Your role: ${myRole}`;
-  roleActions.appendChild(title);
+  const title = document.createElement("div"); title.textContent = `Your role: ${myRole}`; roleActions.appendChild(title);
 
-  // Cupid (link two players)
-  if (myRole === "Cupid") {
-    const inp = document.createElement("input"); inp.placeholder = "Name to link";
-    const btn = document.createElement("button"); btn.textContent = "Link (Cupid)";
-    btn.onclick = () => { const tgt = inp.value.trim(); if (tgt) game.queueAction(myName, tgt, "cupid_link"); }
+  // helper to create input+button
+  function addAction(label, placeholder, handler) {
+    const inp = document.createElement("input"); inp.placeholder = placeholder;
+    const btn = document.createElement("button"); btn.textContent = label;
+    btn.onclick = () => { const tgt = inp.value.trim(); if (!tgt) { alert("Enter target name"); return } handler(tgt); inp.value=""; }
     roleActions.appendChild(inp); roleActions.appendChild(btn);
+  }
+
+  // Cupid
+  if (myRole === "Cupid") {
+    addAction("Link (Cupid)","Name to link", (t)=> game.queueAction(name, t, "cupid_link"));
   }
 
   // Janitor
   if (myRole === "Janitor") {
-    const inp = document.createElement("input"); inp.placeholder = "Corpse name to clean";
-    const btn = document.createElement("button"); btn.textContent = "Clean (Janitor)";
-    btn.onclick = () => { const tgt = inp.value.trim(); if (tgt) game.queueAction(myName, tgt, "janitor_clean"); }
-    roleActions.appendChild(inp); roleActions.appendChild(btn);
+    addAction("Clean (Janitor)","Corpse name to clean", (t)=> game.queueAction(name, t, "janitor_clean"));
   }
 
   // Executioner
   if (myRole === "Executioner") {
-    const inp = document.createElement("input"); inp.placeholder = "Set target name";
-    const btn = document.createElement("button"); btn.textContent = "Set Target (Executioner)";
-    btn.onclick = () => { const tgt = inp.value.trim(); if (tgt) game.queueAction(myName, tgt, "executioner_set"); }
-    roleActions.appendChild(inp); roleActions.appendChild(btn);
+    addAction("Set Target (Executioner)","Target name", (t)=> game.queueAction(name, t, "executioner_set"));
   }
 
   // Doctor
   if (myRole === "Doctor") {
-    const inp = document.createElement("input"); inp.placeholder = "Name to heal (any)";
-    const btn = document.createElement("button"); btn.textContent = "Heal (Doctor)";
-    btn.onclick = () => { const tgt = inp.value.trim(); if (tgt) game.queueAction(myName, tgt, "doctor_heal"); }
-    roleActions.appendChild(inp); roleActions.appendChild(btn);
+    addAction("Heal (Doctor)","Name to heal (any)", (t)=> game.queueAction(name, t, "doctor_heal"));
   }
 
-  // Mafia kill roles
+  // Jailor: jail or execute
+  if (myRole === "Jailor") {
+    // jail
+    addAction("Jail (Jailor)","Name to jail", (t)=> game.queueAction(name, t, "jail"));
+    // execute - uses same endpoint but include execute flag; we will send an action type "jail_execute"
+    const inpExec = document.createElement("input"); inpExec.placeholder = "Name to jail+execute";
+    const btnExec = document.createElement("button"); btnExec.textContent = "Jail+Execute";
+    btnExec.onclick = () => { const t=inpExec.value.trim(); if(!t){alert("enter name");return} game.queueAction(name, t, "jail_execute"); inpExec.value=""; }
+    roleActions.appendChild(inpExec); roleActions.appendChild(btnExec);
+  }
+
+  // Vigilante (cooldown managed server-side)
+  if (myRole === "Vigilante") {
+    addAction("Shoot (Vigilante)","Target name (mafia only)", (t)=> game.queueAction(name, t, "vigilante_shot"));
+  }
+
+  // Mafia killers
   if (["Mafioso","Godfather","Beastman"].includes(myRole)) {
-    const inp = document.createElement("input"); inp.placeholder = "Target name to kill";
-    const btn = document.createElement("button"); btn.textContent = "Kill (Mafia)";
-    btn.onclick = () => { const tgt = inp.value.trim(); if (tgt) {
-        const type = myRole === "Beastman" ? "beast_kill" : "mafia_kill";
-        game.queueAction(myName, tgt, type);
-    } }
-    roleActions.appendChild(inp); roleActions.appendChild(btn);
+    const type = myRole==="Beastman" ? "beast_kill" : "mafia_kill";
+    addAction("Kill (Mafia)", "Target name", (t)=> game.queueAction(name, t, type));
+    // also allow mafia chat selection via channel selector
   }
 
   // Serial Killer
   if (myRole === "Serial Killer") {
-    const inp = document.createElement("input"); inp.placeholder = "Target name";
-    const btn = document.createElement("button"); btn.textContent = "Kill (SK)";
-    btn.onclick = () => { const tgt = inp.value.trim(); if (tgt) game.queueAction(myName, tgt, "serial_kill"); }
-    roleActions.appendChild(inp); roleActions.appendChild(btn);
+    addAction("Kill (SK)","Target name", (t)=> game.queueAction(name, t, "serial_kill"));
   }
 
-  // Detective / Investigator / Sheriff - investigation (example: Detective)
-  if (myRole === "Detective" || myRole === "Sheriff") {
-    const inp = document.createElement("input"); inp.placeholder = "Name to investigate";
-    const btn = document.createElement("button"); btn.textContent = "Investigate";
-    btn.onclick = () => { const tgt = inp.value.trim(); if (tgt) game.queueAction(myName, tgt, "detective_check"); }
-    roleActions.appendChild(inp); roleActions.appendChild(btn);
+  // Detective/Sheriff/Investigator
+  if (["Detective","Sheriff","Investigator"].includes(myRole)) {
+    addAction("Investigate","Name to investigate", (t)=> game.queueAction(name, t, "detective_check"));
   }
 
-  // add other role-specific UI elements as needed...
+  // Guardian Angel - protection
+  if (myRole === "Guardian Angel") {
+    addAction("Protect","Name to protect", (t)=> game.queueAction(name, t, "guardian_protect"));
+  }
+
+  // Medium - can send medium messages via chat channel 'medium' (UI uses channel select)
+  if (myRole === "Medium") {
+    pushMessage("You can chat with the dead during night using channel 'Medium'.");
+  }
 }
+
+// allow pressing Enter to send chat
+chatInput.addEventListener("keydown", (e)=> { if (e.key === "Enter") document.getElementById("sendChat").click(); });
+
+// done
+pushMessage("Connected client loaded. Waiting for role if you joined an active game...");
 </script>
 </body>
   </html>
