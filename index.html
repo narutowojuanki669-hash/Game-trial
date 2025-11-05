@@ -5,41 +5,36 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Town of Shadows</title>
   <style>
-    body{font-family:Arial,Helvetica,sans-serif;background:#0b0b0f;color:#eee;display:flex;flex-direction:column;align-items:center;padding:16px}
+    body{font-family:Arial,Helvetica,sans-serif;background:#0b0b0f;color:#eee;display:flex;flex-direction:column;align-items:center;padding:12px}
     h1{color:#f4b400}
     button{margin:4px;padding:8px 12px;border-radius:8px;border:none;background:#2b2b2b;color:#fff;cursor:pointer}
-    #grid{display:grid;grid-template-columns:repeat(5,120px);gap:8px;margin-top:12px}
+    /* responsive grid: fixes mobile column clipping */
+    #grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;width:100%;max-width:760px;margin-top:12px}
     .box{background:#131318;border:1px solid #2a2a2a;padding:8px;border-radius:6px;text-align:center}
     #chatArea{width:100%;max-width:760px;margin-top:10px;min-height:120px;border-top:1px solid #222;padding-top:8px;overflow:auto}
-    input,select{padding:6px;border-radius:6px;border:none;background:#1a1a1a;color:#eee}
-    #roleActions{margin-top:10px}
+    input,select{padding:6px;border-radius:6px;border:none;background:#141414;color:#fff}
+    #roleActions{margin-top:10px;width:100%;max-width:760px;display:flex;flex-wrap:wrap;gap:6px}
     .phaseBar{margin-top:8px;padding:8px;border-radius:6px;background:#16161a;width:100%;max-width:760px;text-align:center;display:flex;justify-content:space-between;align-items:center}
-    .countdown{font-weight:bold}
-    #phaseMeter{height:10px;background:#2a2a2a;border-radius:6px;overflow:hidden;margin-top:6px}
-    #phaseFill{height:100%;width:0%;background:green;transition:width 0.5s linear}
+    #votePanel{margin-top:8px;width:100%;max-width:760px;background:#0f0f12;padding:8px;border-radius:6px;display:none;gap:6px;flex-wrap:wrap}
     .muted{opacity:0.6}
   </style>
 </head>
 <body>
   <h1>Town of Shadows</h1>
-
   <div class="phaseBar">
-    <div>
-      <span id="phaseName">—</span> — <span id="subphaseName">—</span>
-    </div>
-    <div>
-      Time left: <span id="phaseTime" class="countdown">—</span>
-    </div>
+    <div><span id="phaseName">—</span> — <span id="subphaseName">—</span></div>
+    <div>Time left: <span id="phaseTime">—</span></div>
   </div>
-  <div id="phaseMeter"><div id="phaseFill"></div></div>
 
   <div style="margin-top:8px">
     <button id="startBtn">Start Game</button>
-    <button id="skipPhaseBtn">Skip Phase (admin)</button>
-    <span id="mySlotDisplay"></span>
+    <button id="skipBtn">Skip Phase (admin)</button>
+    <span id="slotInfo"></span>
   </div>
 
   <div id="roleActions"></div>
+
+  <div id="votePanel"></div>
 
   <div id="grid"></div>
 
@@ -56,7 +51,6 @@ import { TownOfShadowsWS } from "./wsClient.js";
 
 const BACKEND_URL = "https://town-of-shadows-server.onrender.com";
 
-// create or join room
 let roomInput = prompt("Enter Room ID (or leave blank to create a new room):");
 let roomId = roomInput?.trim();
 if (!roomId) {
@@ -70,200 +64,125 @@ const name = prompt("Enter display name:") || "Player";
 const game = new TownOfShadowsWS(roomId, name);
 game.connect();
 
-// UI refs
-const grid = document.getElementById("grid");
-const chatArea = document.getElementById("chatArea");
-const roleActions = document.getElementById("roleActions");
-const phaseName = document.getElementById("phaseName");
-const subphaseName = document.getElementById("subphaseName");
-const phaseTime = document.getElementById("phaseTime");
-const phaseFill = document.getElementById("phaseFill");
-const chatInput = document.getElementById("chatInput");
-const chatChannel = document.getElementById("chatChannel");
-const mySlotDisplay = document.getElementById("mySlotDisplay");
+const grid = document.getElementById("grid"), chatArea = document.getElementById("chatArea");
+const roleActions = document.getElementById("roleActions"), phaseName = document.getElementById("phaseName");
+const subphaseName = document.getElementById("subphaseName"), phaseTime = document.getElementById("phaseTime");
+const votePanel = document.getElementById("votePanel"), slotInfo = document.getElementById("slotInfo");
+const chatInput = document.getElementById("chatInput"), chatChannel = document.getElementById("chatChannel");
 
-// simple helper
-function pushMessage(text, cls) {
-  const d = document.createElement("div"); d.textContent = text; if (cls) d.className = cls; chatArea.appendChild(d); chatArea.scrollTop = chatArea.scrollHeight;
-}
+function pushMessage(text, cls){ const d=document.createElement("div"); d.textContent=text; if(cls) d.className=cls; chatArea.appendChild(d); chatArea.scrollTop = chatArea.scrollHeight; }
 
-// room updates
+game.onSystem = (m) => pushMessage("🔔 " + m);
+game.onChat = (from, text, channel) => {
+  let prefix = ""; if (channel==="mafia") prefix="[Mafia] "; else if (channel==="cult") prefix="[Cult] "; else if (channel==="lovers") prefix="[Lovers] "; else if (channel==="medium") prefix="[Medium↔Dead] ";
+  pushMessage(prefix + from + ": " + text);
+};
+
+let mySlot = null, myRole = null;
+
+// render grid & also keep alive list for voting
+let latestRoom = null;
 game.onRoomUpdate = (room) => {
+  latestRoom = room;
   grid.innerHTML = "";
-  room.players.forEach(p => {
-    const box = document.createElement("div");
-    box.className = "box";
+  const aliveList = [];
+  room.players.forEach(p=>{
+    const box = document.createElement("div"); box.className="box";
     box.innerHTML = `<strong>${p.name}</strong><div>${p.alive ? "🟩 Alive" : "💀 Dead"}</div><div>${p.symbol || ""}</div>`;
     grid.appendChild(box);
+    if (p.alive) aliveList.push(p);
   });
+  // update vote panel when voting phase active
+  renderVotePanel(aliveList);
 };
-
-// system
-game.onSystem = (msg) => { pushMessage("🔔 " + msg) }
-
-// chat
-game.onChat = (from, text, channel) => {
-  let prefix = "";
-  if (channel === "mafia") prefix = "[Mafia] ";
-  else if (channel === "cult") prefix = "[Cult] ";
-  else if (channel === "lovers") prefix = "[Lovers] ";
-  else if (channel === "medium") prefix = "[Medium↔Dead] ";
-  pushMessage(prefix + from + ": " + text);
-}
 
 // phase updates
-let currentPhaseTotal = 1;
-let currentPhaseRemaining = 0;
+let currentSubphase = "";
 game.onPhase = (p) => {
-  // p might contain 'phase' or only 'seconds'
-  const phase = p.phase || "unknown";
-  phaseName.textContent = phase;
-  // map subphase names
-  if (phase === "discussion") subphaseName.textContent = "Discussion";
-  else if (phase === "voting") subphaseName.textContent = "Voting";
-  else if (phase === "defence") subphaseName.textContent = "Defence";
-  else if (phase === "final") subphaseName.textContent = "Final Decision";
-  else if (phase === "night") subphaseName.textContent = "Night Actions";
-  else subphaseName.textContent = "";
-  if (typeof p.seconds !== 'undefined') {
-    currentPhaseRemaining = p.seconds;
-    phaseTime.textContent = currentPhaseRemaining + "s";
-    // compute total for fill bar heuristically based on phase
-    if (phase === "discussion") currentPhaseTotal = 60;
-    else if (phase === "voting") currentPhaseTotal = 20;
-    else if (phase === "defence") currentPhaseTotal = 10;
-    else if (phase === "final") currentPhaseTotal = 10;
-    else if (phase === "night") currentPhaseTotal = 40;
-    else currentPhaseTotal = Math.max(currentPhaseRemaining, 1);
-    const pct = Math.max(0, Math.min(100, Math.round((currentPhaseRemaining / currentPhaseTotal) * 100)));
-    phaseFill.style.width = pct + "%";
-    // color shift
-    if (pct > 66) phaseFill.style.background = "green";
-    else if (pct > 33) phaseFill.style.background = "orange";
-    else phaseFill.style.background = "red";
+  if (p.phase) {
+    // p.phase set to 'discussion','voting','defence','final','night' by server segments
+    currentSubphase = p.phase;
+    subphaseName.textContent = (p.phase==="discussion"?"Discussion":p.phase==="voting"?"Voting":p.phase==="defence"?"Defence":p.phase==="final"?"Final":"Night");
+    // show/hide vote panel
+    if (p.phase === "voting") votePanel.style.display = "flex"; else votePanel.style.display = "none";
+    // chat enable/disable
+    if (p.phase === "night") { chatInput.disabled = true; chatChannel.disabled = true; } else { chatInput.disabled = false; chatChannel.disabled = false; }
   }
-  // chat enabling/disabling
-  if (phase === "night") {
-    chatInput.disabled = true; chatChannel.disabled = true;
-  } else {
-    chatInput.disabled = false; chatChannel.disabled = false;
-  }
+  if (typeof p.seconds !== "undefined") phaseTime.textContent = p.seconds + "s";
 };
 
-// private role arrives
-let myRole = null;
-let mySlot = null;
+// private role
 game.onPrivateRole = (obj) => {
-  myRole = obj.role;
-  mySlot = obj.slot;
-  mySlotDisplay.textContent = ` | Slot ${mySlot}`;
-  pushMessage("(PRIVATE) Your role: " + obj.role + " — " + (obj.explain || ""));
-  renderRoleControls();
+  mySlot = obj.slot; myRole = obj.role;
+  slotInfo.textContent = ` | Slot ${mySlot} | Role: ${myRole}`;
+  pushMessage(`(PRIVATE) You are slot ${mySlot}. Role: ${myRole} — ${obj.explain || ""}`);
+  renderRoleActions();
 };
 
-// chat send
-document.getElementById("sendChat").onclick = () => {
-  const txt = chatInput.value.trim();
-  if (!txt) return;
-  const channel = chatChannel.value || "public";
-  game.sendChat(txt, channel);
-  chatInput.value = "";
-};
+// voting UI (populated with alive players)
+function renderVotePanel(aliveList){
+  votePanel.innerHTML = "";
+  if (!latestRoom) return;
+  if (currentSubphase !== "voting") { votePanel.style.display = "none"; return; }
+  votePanel.style.display = "flex";
+  const title = document.createElement("div"); title.textContent = "Vote Panel:"; votePanel.appendChild(title);
+  aliveList.forEach(p=>{
+    if (p.name === name) return;
+    const btn = document.createElement("button");
+    btn.textContent = "Vote " + p.name;
+    btn.onclick = ()=> {
+      // send vote via WS: find my slot
+      game.vote(mySlot, p.name);
+      pushMessage("You voted for " + p.name);
+    };
+    votePanel.appendChild(btn);
+  });
+}
 
-// start game
-document.getElementById("startBtn").onclick = () => {
-  game.startGame();
-};
-
-// skip phase for testing/admin
-document.getElementById("skipPhaseBtn").onclick = async () => {
-  const res = await fetch(`${BACKEND_URL}/next-phase/${roomId}`, { method: "POST" });
-  const txt = await res.text(); pushMessage("Admin: " + txt);
-};
-
-// render role-specific controls
-function renderRoleControls() {
+// render role actions (buttons shown always but only accepted by server during allowed phases)
+function renderRoleActions(){
   roleActions.innerHTML = "";
   if (!myRole) return;
   const title = document.createElement("div"); title.textContent = `Your role: ${myRole}`; roleActions.appendChild(title);
 
-  // helper to create input+button
-  function addAction(label, placeholder, handler) {
+  function addAction(label, placeholder, handler){
     const inp = document.createElement("input"); inp.placeholder = placeholder;
     const btn = document.createElement("button"); btn.textContent = label;
-    btn.onclick = () => { const tgt = inp.value.trim(); if (!tgt) { alert("Enter target name"); return } handler(tgt); inp.value=""; }
+    btn.onclick = ()=>{ const tgt = inp.value.trim(); if (!tgt){ alert("Enter target"); return } handler(tgt); inp.value=""; };
     roleActions.appendChild(inp); roleActions.appendChild(btn);
   }
 
-  // Cupid
-  if (myRole === "Cupid") {
-    addAction("Link (Cupid)","Name to link", (t)=> game.queueAction(name, t, "cupid_link"));
-  }
-
-  // Janitor
-  if (myRole === "Janitor") {
-    addAction("Clean (Janitor)","Corpse name to clean", (t)=> game.queueAction(name, t, "janitor_clean"));
-  }
-
-  // Executioner
-  if (myRole === "Executioner") {
-    addAction("Set Target (Executioner)","Target name", (t)=> game.queueAction(name, t, "executioner_set"));
-  }
-
-  // Doctor
-  if (myRole === "Doctor") {
-    addAction("Heal (Doctor)","Name to heal (any)", (t)=> game.queueAction(name, t, "doctor_heal"));
-  }
-
-  // Jailor: jail or execute
-  if (myRole === "Jailor") {
-    // jail
-    addAction("Jail (Jailor)","Name to jail", (t)=> game.queueAction(name, t, "jail"));
-    // execute - uses same endpoint but include execute flag; we will send an action type "jail_execute"
-    const inpExec = document.createElement("input"); inpExec.placeholder = "Name to jail+execute";
-    const btnExec = document.createElement("button"); btnExec.textContent = "Jail+Execute";
-    btnExec.onclick = () => { const t=inpExec.value.trim(); if(!t){alert("enter name");return} game.queueAction(name, t, "jail_execute"); inpExec.value=""; }
-    roleActions.appendChild(inpExec); roleActions.appendChild(btnExec);
-  }
-
-  // Vigilante (cooldown managed server-side)
-  if (myRole === "Vigilante") {
-    addAction("Shoot (Vigilante)","Target name (mafia only)", (t)=> game.queueAction(name, t, "vigilante_shot"));
-  }
-
-  // Mafia killers
+  if (myRole === "Doctor") addAction("Heal (Doctor)","Name to heal (any)", (t)=> game.queueAction(name, t, "doctor_heal"));
+  if (myRole === "Vigilante") addAction("Shoot (Vigilante)","Target name (mafia only)", (t)=> game.queueAction(name, t, "vigilante_shot"));
+  if (myRole === "Jailor"){ addAction("Jail","Name to jail",(t)=> game.queueAction(name,t,"jail")); addAction("Jail+Execute","Name to jail+exec",(t)=> game.queueAction(name,t,"jail_execute")); }
+  if (myRole === "Cupid") addAction("Link (Cupid)","Name to link",(t)=> game.queueAction(name,t,"cupid_link"));
+  if (myRole === "Janitor") addAction("Clean (Janitor)","Corpse name to clean",(t)=> game.queueAction(name,t,"janitor_clean"));
   if (["Mafioso","Godfather","Beastman"].includes(myRole)) {
     const type = myRole==="Beastman" ? "beast_kill" : "mafia_kill";
-    addAction("Kill (Mafia)", "Target name", (t)=> game.queueAction(name, t, type));
-    // also allow mafia chat selection via channel selector
+    addAction("Kill (Mafia)","Target name",(t)=> game.queueAction(name,t,type));
   }
-
-  // Serial Killer
-  if (myRole === "Serial Killer") {
-    addAction("Kill (SK)","Target name", (t)=> game.queueAction(name, t, "serial_kill"));
-  }
-
-  // Detective/Sheriff/Investigator
-  if (["Detective","Sheriff","Investigator"].includes(myRole)) {
-    addAction("Investigate","Name to investigate", (t)=> game.queueAction(name, t, "detective_check"));
-  }
-
-  // Guardian Angel - protection
-  if (myRole === "Guardian Angel") {
-    addAction("Protect","Name to protect", (t)=> game.queueAction(name, t, "guardian_protect"));
-  }
-
-  // Medium - can send medium messages via chat channel 'medium' (UI uses channel select)
-  if (myRole === "Medium") {
-    pushMessage("You can chat with the dead during night using channel 'Medium'.");
-  }
+  if (myRole === "Serial Killer") addAction("Kill (SK)","Target name",(t)=> game.queueAction(name,t,"serial_kill"));
+  if (["Detective","Sheriff","Investigator"].includes(myRole)) addAction("Investigate","Name to investigate",(t)=> game.queueAction(name,t,"detective_check"));
+  if (myRole === "Executioner") addAction("Set Target","Target name",(t)=> game.queueAction(name,t,"executioner_set"));
+  if (myRole === "Medium") pushMessage("You can speak with the dead during night (use channel 'Medium').");
 }
 
-// allow pressing Enter to send chat
-chatInput.addEventListener("keydown", (e)=> { if (e.key === "Enter") document.getElementById("sendChat").click(); });
+// chat send
+document.getElementById("sendChat").onclick = ()=>{
+  const text = chatInput.value.trim(); if (!text) return;
+  const channel = chatChannel.value || "public";
+  game.sendChat(text, channel);
+  chatInput.value = "";
+};
 
-// done
-pushMessage("Connected client loaded. Waiting for role if you joined an active game...");
+// start & skip
+document.getElementById("startBtn").onclick = ()=> game.startGame();
+document.getElementById("skipBtn").onclick = async ()=> {
+  const res = await fetch(`${BACKEND_URL}/next-phase/${roomId}`, { method: "POST" });
+  const txt = await res.text(); pushMessage("Admin: " + txt);
+};
+
+pushMessage("Client ready — waiting for role (if you joined an active game).");
 </script>
 </body>
-  </html>
+      </html>
