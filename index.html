@@ -1,0 +1,123 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Town of Shadows - Baseline</title>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;background:#07070a;color:#eee;display:flex;flex-direction:column;align-items:center;padding:12px}
+    h1{color:#f4b400}
+    #grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;width:100%;max-width:760px;margin-top:12px}
+    .box{background:#121217;padding:8px;border-radius:6px;text-align:center;border:1px solid #222}
+    .dead{opacity:0.4}
+    .phaseBar{margin-top:8px;padding:8px;border-radius:6px;background:#16161a;width:100%;max-width:760px;text-align:center}
+    #timerBar{width:100%;height:8px;background:#2a2a2a;border-radius:6px;margin-top:6px}
+    #timerFill{height:100%;width:0%;background:lime;border-radius:6px}
+    #controls{margin-top:10px}
+    button{padding:8px 12px;border-radius:6px;background:#2b2b2b;color:#fff;border:none;margin:4px}
+  </style>
+</head>
+<body>
+  <h1>Town of Shadows (Baseline)</h1>
+  <div class="phaseBar">
+    <div id="phaseName">Waiting...</div>
+    <div id="phaseTime">--</div>
+    <div id="timerBar"><div id="timerFill"></div></div>
+  </div>
+
+  <div id="controls">
+    <button id="startBtn">Start Game</button>
+    <button id="createRoomBtn">Create Room</button>
+    <span id="roomInfo"></span>
+  </div>
+
+  <div id="grid"></div>
+
+<script type="module">
+import { createAndJoin, connectWS, startGame } from "./wsClient.js";
+
+let ROOM_ID = null;
+let SLOT = null;
+let ROLE = null;
+let WS = null;
+let timerInterval = null;
+
+async function boot() {
+  const name = prompt("Enter your name","joiboi") || "joiboi";
+  // Ask the user if they want to create a new room or use an ID
+  let rid = prompt("Enter Room ID (leave blank to create new):", "");
+  const join = await createAndJoin(rid, name);
+  ROOM_ID = join.roomId; SLOT = join.slot; ROLE = join.role;
+  document.getElementById("roomInfo").textContent = `Room: ${ROOM_ID} | Slot: ${SLOT}`;
+  // connect ws and identify
+  WS = connectWS(ROOM_ID, handleMsg);
+  // identify after open
+  WS.addEventListener("open", ()=> {
+    WS.send(JSON.stringify({ type: "identify", slot: SLOT }));
+  });
+}
+
+function handleMsg(msg) {
+  if (msg.type === "system") appendLog("SYS: " + msg.text);
+  else if (msg.type === "room") renderGrid(msg.room);
+  else if (msg.type === "private_role") {
+    ROLE = msg.role;
+    alert("Your role: " + ROLE);
+  } else if (msg.type === "phase") {
+    showPhase(msg.phase, msg.seconds);
+  } else if (msg.type === "chat") {
+    appendLog((msg.from || "Anon") + ": " + msg.text);
+  }
+}
+
+function renderGrid(room) {
+  const grid = document.getElementById("grid");
+  grid.innerHTML = "";
+  room.players.forEach(p=>{
+    const el = document.createElement("div"); el.className = "box";
+    if (!p.alive) el.classList.add("dead");
+    el.innerHTML = `<div><strong>${p.name}</strong></div><div>Slot ${p.slot}</div><div>${p.alive ? "Alive" : "Dead"}</div>`;
+    grid.appendChild(el);
+  });
+}
+
+function appendLog(text) {
+  console.log(text);
+}
+
+function showPhase(phase, seconds) {
+  document.getElementById("phaseName").textContent = phase;
+  document.getElementById("phaseTime").textContent = seconds ? `${seconds}s` : "";
+  startTimer(seconds || 0);
+}
+
+function startTimer(seconds) {
+  const fill = document.getElementById("timerFill");
+  if (timerInterval) clearInterval(timerInterval);
+  if (!seconds || seconds <= 0) { fill.style.width = "0%"; return; }
+  let remaining = seconds;
+  fill.style.width = "100%";
+  timerInterval = setInterval(()=>{
+    remaining--;
+    let pct = Math.max(0, (remaining / seconds) * 100);
+    fill.style.width = pct + "%";
+    if (remaining <= 0) clearInterval(timerInterval);
+  }, 1000);
+}
+
+// ui buttons
+document.getElementById("createRoomBtn").onclick = async ()=> {
+  const res = await fetch("/create-room", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ host_name: "Host" })});
+  const data = await res.json();
+  alert("Created room: " + data.roomId);
+};
+
+document.getElementById("startBtn").onclick = async ()=> {
+  if (!ROOM_ID) { alert("No room id"); return; }
+  await startGame(ROOM_ID);
+};
+
+boot();
+</script>
+</body>
+</html>
