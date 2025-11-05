@@ -13,13 +13,14 @@ export class TownOfShadowsWS {
     this.onRoomUpdate = null;
     this.onChat = null;
     this.onPrivateRole = null;
+    this.onPhase = null;
   }
 
   connect() {
     this.ws = new WebSocket(`${BACKEND_WS_BASE}/${this.roomId}`);
     this.ws.onopen = () => {
       console.log("✅ WS connected");
-      // attempt to claim a slot via join message (server assigns a bot slot to this client)
+      // join room by claiming a bot slot
       this.send({ type: "join", name: this.playerName });
     };
     this.ws.onmessage = (ev) => {
@@ -32,6 +33,8 @@ export class TownOfShadowsWS {
         this.onChat && this.onChat(msg.from, msg.text);
       } else if (msg.type === "private_role") {
         this.onPrivateRole && this.onPrivateRole(msg);
+      } else if (msg.type === "phase") {
+        this.onPhase && this.onPhase(msg);
       } else {
         this.onMessage && this.onMessage(msg);
       }
@@ -52,7 +55,6 @@ export class TownOfShadowsWS {
     this.send({ type: "chat", from: this.playerName, text });
   }
 
-  // role actions: actor (your name), target (player name), type (action string)
   queueAction(actor, target, type) {
     this.send({ type: "player_action", action: { actor, target, type } });
   }
@@ -64,4 +66,4 @@ export class TownOfShadowsWS {
   vote(slot, targetName) {
     this.send({ type: "vote", slot, target: targetName });
   }
-    }
+      }
