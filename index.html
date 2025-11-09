@@ -1,70 +1,82 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Town of Shadows (Playable)</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Town of Shadows</title>
 <style>
-  body{background:#080808;color:#eee;font-family:Inter,Arial,Helvetica,sans-serif;padding:12px;display:flex;flex-direction:column;align-items:center}
-  h1{color:#f6c700;margin:6px 0 12px}
-  .topbar{display:flex;gap:8px;align-items:center;margin-bottom:8px}
-  #controls{display:flex;gap:6px;flex-wrap:wrap}
-  #grid{width:100%;max-width:760px;margin:10px auto;display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
-  .player{background:#121217;padding:8px;border-radius:8px;border:1px solid #333;text-align:center;min-height:64px;display:flex;flex-direction:column;justify-content:center}
+  :root{--bg:#080808;--card:#0f0f12;--accent:#ffd166;--muted:#9aa0a6}
+  body{margin:0;font-family:Inter,system-ui,Arial;background:var(--bg);color:#eee;display:flex;flex-direction:column;align-items:center;padding:12px}
+  h1{color:var(--accent);margin:8px 0}
+  .card{background:var(--card);padding:12px;border-radius:10px;width:100%;max-width:920px;border:1px solid #222;margin-bottom:12px}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  input,select,button{padding:8px;border-radius:8px;border:1px solid #2b2b2b;background:#0c0c0e;color:#fff}
+  button{background:var(--accent);color:#000;border:none;font-weight:700}
+  #grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px}
+  .player{background:#131316;padding:8px;border-radius:8px;text-align:center;min-height:80px;display:flex;flex-direction:column;justify-content:center}
   .dead{opacity:0.45}
-  #chat{width:100%;max-width:760px;height:180px;background:#0f0f12;border-radius:8px;padding:8px;overflow:auto;margin-top:8px;border:1px solid #222}
-  #roleBox{background:#0f0f12;padding:8px;border-radius:8px;border:1px solid #222;margin-bottom:8px;text-align:center;width:100%;max-width:760px}
-  button{background:#f6c700;color:#000;border:none;padding:8px 10px;border-radius:6px;font-weight:600}
-  input{padding:8px;border-radius:6px;border:1px solid #333;background:#0b0b0d;color:#fff}
-  #timerBar{height:8px;background:#222;border-radius:6px;margin-top:8px;width:100%;max-width:760px}
-  #timerFill{height:100%;width:0%;background:lime;border-radius:6px}
-  .small{font-size:13px;color:#bbb}
-  #accusedDisplay{margin-top:8px;font-weight:700;color:#ffb3b3}
+  #chat{height:240px;overflow:auto;background:#0b0b0d;border-radius:8px;padding:8px;border:1px solid #222}
+  #timerBar{height:8px;background:#222;border-radius:6px;margin-top:8px;overflow:hidden}
+  #timerFill{height:100%;width:0%;background:linear-gradient(90deg,#2ecc71,#f6c700)}
+  .small{font-size:13px;color:var(--muted)}
+  .controls-row{display:flex;gap:8px;align-items:center;margin-top:8px}
+  #nightActions{display:none;margin-top:8px}
+  #factionBadge{font-weight:700}
+  @media(max-width:600px){#grid{grid-template-columns:repeat(4,1fr)}}
 </style>
 </head>
 <body>
   <h1>Town of Shadows</h1>
 
-  <div id="roleBox">
-    <div id="connection" class="small">Not connected</div>
-    <div id="roomInfo" class="small">No room</div>
-    <div id="roleDisplay">Role: —</div>
-    <div id="factionDisplay" class="small">Faction: —</div>
+  <div class="card">
+    <div id="roleBox" class="small">
+      <div id="connection">Not connected</div>
+      <div id="roomInfo">No room</div>
+      <div id="roleDisplay">Role: —</div>
+      <div id="factionDisplay" class="small">Faction: —</div>
+    </div>
+
+    <div class="controls">
+      <input id="nameInput" placeholder="Your name" value="joiboi">
+      <input id="roomInput" placeholder="Room ID (leave blank to create)">
+      <button id="createJoinBtn">Create / Join</button>
+      <button id="startBtn">Start Game</button>
+      <div class="small" id="phase">Waiting...</div>
+    </div>
+
+    <div id="timerBar"><div id="timerFill"></div></div>
+    <div id="accusedDisplay" class="small" style="color:#ffb3b3;margin-top:8px">No accused</div>
   </div>
 
-  <div id="controls" class="topbar">
-    <input id="nameInput" placeholder="Your name" value="joiboi">
-    <input id="roomInput" placeholder="Room ID (leave blank to create)">
-    <button id="createJoinBtn">Create / Join</button>
-    <button id="startBtn">Start Game</button>
-    <button id="accuseBtn" disabled>Accuse</button>
-    <button id="guiltyBtn" disabled>Guilty</button>
-    <button id="innocentBtn" disabled>Innocent</button>
+  <div class="card">
+    <div id="grid"></div>
   </div>
 
-  <div id="phase" class="small">Waiting...</div>
-  <div id="timerBar"><div id="timerFill"></div></div>
-  <div id="accusedDisplay">No accused</div>
+  <div class="card">
+    <div id="chat"></div>
+    <div class="controls-row">
+      <input id="chatInput" placeholder="Type a message..." style="flex:1">
+      <select id="chatChannel">
+        <option value="public">Public</option>
+        <option value="mafia">Mafia (private)</option>
+        <option value="cult">Cult (private)</option>
+        <option value="dead">Dead chat</option>
+      </select>
+      <button id="sendBtn">Send</button>
+    </div>
 
-  <div id="grid"></div>
+    <div id="nightActions" class="small">
+      <div><strong>Night action</strong></div>
+      <select id="targetSelect"></select>
+      <button id="confirmActionBtn">Confirm Action</button>
+    </div>
 
-  <div id="chat"></div>
-  <div style="display:flex;gap:6px;width:100%;max-width:760px;margin-top:8px">
-    <input id="chatInput" placeholder="Say something..." style="flex:1">
-    <button id="sendBtn">Send</button>
   </div>
 
 <script type="module">
-import { createAndJoin, connectWS, startGame, identify, sendChat, accuse, verdictVote, vote, sendAction, fetchRoom } from './wsClient.js';
+import * as wsClient from './wsClient.js';
 
-let currentRoom = null;
-let mySlot = null;
-let myName = null;
-let wsInstance = null;
-let currentPhase = "waiting";
-let timerInterval = null;
-
-// UI elements
+// UI refs
 const connEl = document.getElementById("connection");
 const roomInfoEl = document.getElementById("roomInfo");
 const roleDisplay = document.getElementById("roleDisplay");
@@ -72,150 +84,174 @@ const factionDisplay = document.getElementById("factionDisplay");
 const grid = document.getElementById("grid");
 const chatBox = document.getElementById("chat");
 const phaseEl = document.getElementById("phase");
-const accusedEl = document.getElementById("accusedDisplay");
 const timerFill = document.getElementById("timerFill");
+const accusedEl = document.getElementById("accusedDisplay");
+const nightActions = document.getElementById("nightActions");
+const targetSelect = document.getElementById("targetSelect");
+
+let currentRoom = null;
+let mySlot = null;
+let myName = null;
+let myRole = null;
+let myFaction = null;
+let timerInterval = null;
+let currentRoomState = null;
 
 document.getElementById("createJoinBtn").onclick = async () => {
-  const name = document.getElementById("nameInput").value || "joiboi";
-  const rid = document.getElementById("roomInput").value.trim() || "";
-  const res = await createAndJoin(rid, name);
-  currentRoom = res.roomId;
-  mySlot = res.slot;
-  myName = name;
-  roomInfoEl.innerText = `Room: ${currentRoom} • Slot: ${mySlot}`;
-  connEl.innerText = "Room joined (WS connecting...)";
-  // connect WS and set handler
-  wsInstance = connectWS(currentRoom, handleMsg);
-  // identify once ws is open (connectWS will automatically call identify if slot known at open)
-  // wait a little and then call identify in case ws is already open
-  setTimeout(()=> identify(mySlot), 400);
+  try {
+    const name = document.getElementById("nameInput").value || "joiboi";
+    const rid = document.getElementById("roomInput").value.trim() || "";
+    const res = await wsClient.createAndJoin(rid, name);
+    currentRoom = res.roomId; mySlot = res.slot; myName = name;
+    roomInfoEl.innerText = `Room: ${currentRoom} • Slot: ${mySlot}`;
+    connEl.innerText = "Joined (connecting...)";
+    wsClient.setExternalHandler(onMsg);
+  } catch (e) {
+    alert("Join error: "+ (e.message || e));
+  }
 };
 
 document.getElementById("startBtn").onclick = async () => {
   if (!currentRoom) return alert("Join a room first");
-  await startGame(currentRoom);
+  try {
+    const r = await wsClient.startGame(currentRoom);
+    console.log("start result", r);
+  } catch(e) {
+    alert("Start failed: "+(e.message||e));
+  }
 };
 
 document.getElementById("sendBtn").onclick = () => {
-  const t = document.getElementById("chatInput");
-  if (!t.value.trim()) return;
-  sendChat(t.value.trim());
-  t.value = "";
+  const txt = document.getElementById("chatInput");
+  const ch = document.getElementById("chatChannel").value;
+  if (!txt.value.trim()) return;
+  wsClient.sendChat(txt.value.trim(), ch);
+  txt.value = "";
 };
 
-document.getElementById("accuseBtn").onclick = () => {
-  if (!currentRoom || !myName) return;
-  const target = prompt("Enter name to accuse (exact):");
-  if (!target) return;
-  accuse(myName, target);
+document.getElementById("confirmActionBtn").onclick = () => {
+  const t = targetSelect.value;
+  if (!t) return alert("Select a target");
+  const typeMap = {
+    "Mafia": "mafia_kill",
+    "Cult": "cult_convert",
+    "Doctor": "doctor_heal",
+    "Bodyguard": "bodyguard_protect",
+    "Vigilante": "vigilante_shot",
+    "Jailor": "jail",
+    "Janitor": "janitor_clean",
+    "Serial Killer": "serial_kill",
+    "Arsonist": "douse"
+  };
+  let actionType = typeMap[myRole] || "generic_action";
+  wsClient.sendAction({actor: myName, target: t, type: actionType, actor_role: myRole});
+  nightActions.style.display = "none";
 };
 
-document.getElementById("guiltyBtn").onclick = () => {
-  if (!currentRoom || !myName) return;
-  verdictVote(myName, "guilty");
-};
-
-document.getElementById("innocentBtn").onclick = () => {
-  if (!currentRoom || !myName) return;
-  verdictVote(myName, "innocent");
-};
-
-// handle WS messages
-function handleMsg(msg, ws) {
+function onMsg(msg) {
   console.log("MSG", msg);
   if (msg.type === "system") {
-    appendChat("System", msg.text);
-    if (msg.text === "ws_open") {
-      connEl.innerText = "WS open";
-    } else if (msg.text === "ws_closed") {
-      connEl.innerText = "WS closed";
+    appendChat("System", msg.text || "");
+    if (msg.text && msg.text.toLowerCase().includes("connected to")) {
+      connEl.innerText = "Connected";
+    }
+    if (msg.text && msg.text.toLowerCase().includes("game started")) {
+      // nothing extra
     }
     return;
   }
   if (msg.type === "private_role") {
-    roleDisplay.innerText = `Role: ${msg.role || "Unknown"}`;
-    factionDisplay.innerText = `Faction: ${msg.faction || msg.explain || "Unknown"}`;
-    alert(`Your role: ${msg.role}\n${msg.faction || msg.explain || ""}`);
+    myRole = msg.role; myFaction = msg.faction;
+    roleDisplay.innerText = `Role: ${myRole}`;
+    factionDisplay.innerText = `Faction: ${myFaction}`;
+    alert(`Your role: ${myRole} — ${myFaction}`);
     return;
   }
   if (msg.type === "phase") {
-    currentPhase = msg.phase;
-    phaseEl.innerText = `${msg.phase} • ${msg.seconds ? msg.seconds + "s" : ""}`;
+    phaseEl.innerText = `${msg.phase}`;
     startTimer(msg.seconds || 0);
-    // adjust buttons: accuse active during voting, guilty/innocent during final
-    const phaseLower = (msg.phase || "").toLowerCase();
-    document.getElementById("accuseBtn").disabled = !phaseLower.includes("voting");
-    document.getElementById("guiltyBtn").disabled = true;
-    document.getElementById("innocentBtn").disabled = true;
+    const lower = (msg.phase||"").toLowerCase();
+    if (lower.includes("night") && myRole) {
+      const actionable = ["Doctor","Bodyguard","Vigilante","Jailor","Janitor","Serial Killer","Cult Leader","Mafioso","Godfather","Beastman"];
+      if (actionable.includes(myRole)) {
+        populateTargetsForAction();
+        nightActions.style.display = "block";
+      } else {
+        nightActions.style.display = "none";
+      }
+    } else {
+      nightActions.style.display = "none";
+    }
     return;
   }
   if (msg.type === "room") {
+    currentRoomState = msg.room;
     renderGrid(msg.room.players || []);
     return;
   }
   if (msg.type === "chat") {
-    appendChat(msg.from || "Anon", msg.text);
+    appendChat(msg.from || "Anon", msg.text, msg.channel || "public");
     return;
   }
   if (msg.type === "accused_update") {
-    const acc = msg.accused;
-    accusedEl.innerText = acc ? `Accused: ${acc}` : "No accused";
+    accusedEl.innerText = msg.accused ? `Accused: ${msg.accused}` : "No accused";
     return;
   }
   if (msg.type === "verdict_phase") {
-    // enable guilty/innocent buttons
-    document.getElementById("guiltyBtn").disabled = false;
-    document.getElementById("innocentBtn").disabled = false;
-    alert(`Verdict time for ${msg.accused}. Please vote Guilty or Innocent.`);
+    alert(`Verdict time for ${msg.accused}`);
+    return;
+  }
+  if (msg.type === "private") {
+    appendChat("Private", msg.text);
     return;
   }
 }
 
-// grid renderer (5x4)
 function renderGrid(players) {
   grid.innerHTML = "";
-  // ensure players length is multiple of 5 for a 5x4 grid - but show whatever exists
+  players.sort((a,b)=> a.slot - b.slot);
   players.forEach(p => {
     const el = document.createElement("div");
-    el.className = "player";
-    if (!p.alive) el.classList.add("dead");
-    el.innerHTML = `<div style="font-weight:700">${p.name}</div><div class="small">Slot ${p.slot}</div><div class="small">${p.alive ? "Alive" : "Dead"}</div>`;
+    el.className = "player" + (p.alive ? "" : " dead");
+    el.innerHTML = `<div style="font-weight:700">${p.name}</div><div class="small">Slot ${p.slot}</div><div class="small">${p.alive? "Alive":"Dead"}</div>`;
     grid.appendChild(el);
   });
 }
 
-function appendChat(from, text) {
+function appendChat(from, text, channel="public") {
   const d = document.createElement("div");
   const time = new Date().toLocaleTimeString();
-  d.textContent = `[${time}] ${from}: ${text}`;
+  d.textContent = `[${time}] ${from}${channel!=="public" ? "("+channel+")":""}: ${text}`;
   chatBox.appendChild(d);
   chatBox.scrollTop = chatBox.scrollHeight;
 }
 
-// timer bar control
+function populateTargetsForAction() {
+  targetSelect.innerHTML = "";
+  if (!currentRoomState) return;
+  const alive = currentRoomState.players.filter(p => p.alive);
+  alive.forEach(p => {
+    const opt = document.createElement("option");
+    opt.value = p.name;
+    opt.textContent = `${p.name} ${p.name===myName ? "(you)" : ""}`;
+    targetSelect.appendChild(opt);
+  });
+}
+
 function startTimer(seconds) {
   if (timerInterval) clearInterval(timerInterval);
-  const fill = timerFill;
-  if (!seconds || seconds <= 0) { fill.style.width = "0%"; return; }
+  if (!seconds || seconds<=0) { timerFill.style.width="0%"; return; }
   let remaining = seconds;
-  fill.style.width = "100%";
+  timerFill.style.width = "100%";
   timerInterval = setInterval(()=> {
     remaining--;
     const pct = Math.max(0, (remaining/seconds) * 100);
-    fill.style.width = pct + "%";
-    if (remaining <= 0) clearInterval(timerInterval);
+    timerFill.style.width = pct + "%";
+    if (remaining<=0) clearInterval(timerInterval);
   }, 1000);
 }
 
-// allow user to inspect room details
-window.fetchRoomInfo = async () => {
-  if (!currentRoom) return;
-  const info = await fetchRoom(currentRoom);
-  console.log("RoomInfo", info);
-};
-
-// If user reloads page but had room in URL (you can enhance this), they can reconnect manually.
-
+wsClient.setExternalHandler(onMsg);
 </script>
 </body>
-  </html>
+        </html>
