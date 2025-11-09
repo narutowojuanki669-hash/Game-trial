@@ -1,123 +1,221 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Town of Shadows - Baseline</title>
-  <style>
-    body{font-family:Arial,Helvetica,sans-serif;background:#07070a;color:#eee;display:flex;flex-direction:column;align-items:center;padding:12px}
-    h1{color:#f4b400}
-    #grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;width:100%;max-width:760px;margin-top:12px}
-    .box{background:#121217;padding:8px;border-radius:6px;text-align:center;border:1px solid #222}
-    .dead{opacity:0.4}
-    .phaseBar{margin-top:8px;padding:8px;border-radius:6px;background:#16161a;width:100%;max-width:760px;text-align:center}
-    #timerBar{width:100%;height:8px;background:#2a2a2a;border-radius:6px;margin-top:6px}
-    #timerFill{height:100%;width:0%;background:lime;border-radius:6px}
-    #controls{margin-top:10px}
-    button{padding:8px 12px;border-radius:6px;background:#2b2b2b;color:#fff;border:none;margin:4px}
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Town of Shadows (Playable)</title>
+<style>
+  body{background:#080808;color:#eee;font-family:Inter,Arial,Helvetica,sans-serif;padding:12px;display:flex;flex-direction:column;align-items:center}
+  h1{color:#f6c700;margin:6px 0 12px}
+  .topbar{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+  #controls{display:flex;gap:6px;flex-wrap:wrap}
+  #grid{width:100%;max-width:760px;margin:10px auto;display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+  .player{background:#121217;padding:8px;border-radius:8px;border:1px solid #333;text-align:center;min-height:64px;display:flex;flex-direction:column;justify-content:center}
+  .dead{opacity:0.45}
+  #chat{width:100%;max-width:760px;height:180px;background:#0f0f12;border-radius:8px;padding:8px;overflow:auto;margin-top:8px;border:1px solid #222}
+  #roleBox{background:#0f0f12;padding:8px;border-radius:8px;border:1px solid #222;margin-bottom:8px;text-align:center;width:100%;max-width:760px}
+  button{background:#f6c700;color:#000;border:none;padding:8px 10px;border-radius:6px;font-weight:600}
+  input{padding:8px;border-radius:6px;border:1px solid #333;background:#0b0b0d;color:#fff}
+  #timerBar{height:8px;background:#222;border-radius:6px;margin-top:8px;width:100%;max-width:760px}
+  #timerFill{height:100%;width:0%;background:lime;border-radius:6px}
+  .small{font-size:13px;color:#bbb}
+  #accusedDisplay{margin-top:8px;font-weight:700;color:#ffb3b3}
+</style>
 </head>
 <body>
-  <h1>Town of Shadows (Baseline)</h1>
-  <div class="phaseBar">
-    <div id="phaseName">Waiting...</div>
-    <div id="phaseTime">--</div>
-    <div id="timerBar"><div id="timerFill"></div></div>
+  <h1>Town of Shadows</h1>
+
+  <div id="roleBox">
+    <div id="connection" class="small">Not connected</div>
+    <div id="roomInfo" class="small">No room</div>
+    <div id="roleDisplay">Role: —</div>
+    <div id="factionDisplay" class="small">Faction: —</div>
   </div>
 
-  <div id="controls">
+  <div id="controls" class="topbar">
+    <input id="nameInput" placeholder="Your name" value="joiboi">
+    <input id="roomInput" placeholder="Room ID (leave blank to create)">
+    <button id="createJoinBtn">Create / Join</button>
     <button id="startBtn">Start Game</button>
-    <button id="createRoomBtn">Create Room</button>
-    <span id="roomInfo"></span>
+    <button id="accuseBtn" disabled>Accuse</button>
+    <button id="guiltyBtn" disabled>Guilty</button>
+    <button id="innocentBtn" disabled>Innocent</button>
   </div>
+
+  <div id="phase" class="small">Waiting...</div>
+  <div id="timerBar"><div id="timerFill"></div></div>
+  <div id="accusedDisplay">No accused</div>
 
   <div id="grid"></div>
 
-<script type="module">
-import { createAndJoin, connectWS, startGame } from "./wsClient.js";
+  <div id="chat"></div>
+  <div style="display:flex;gap:6px;width:100%;max-width:760px;margin-top:8px">
+    <input id="chatInput" placeholder="Say something..." style="flex:1">
+    <button id="sendBtn">Send</button>
+  </div>
 
-let ROOM_ID = null;
-let SLOT = null;
-let ROLE = null;
-let WS = null;
+<script type="module">
+import { createAndJoin, connectWS, startGame, identify, sendChat, accuse, verdictVote, vote, sendAction, fetchRoom } from './wsClient.js';
+
+let currentRoom = null;
+let mySlot = null;
+let myName = null;
+let wsInstance = null;
+let currentPhase = "waiting";
 let timerInterval = null;
 
-async function boot() {
-  const name = prompt("Enter your name","joiboi") || "joiboi";
-  // Ask the user if they want to create a new room or use an ID
-  let rid = prompt("Enter Room ID (leave blank to create new):", "");
-  const join = await createAndJoin(rid, name);
-  ROOM_ID = join.roomId; SLOT = join.slot; ROLE = join.role;
-  document.getElementById("roomInfo").textContent = `Room: ${ROOM_ID} | Slot: ${SLOT}`;
-  // connect ws and identify
-  WS = connectWS(ROOM_ID, handleMsg);
-  // identify after open
-  WS.addEventListener("open", ()=> {
-    WS.send(JSON.stringify({ type: "identify", slot: SLOT }));
-  });
-}
+// UI elements
+const connEl = document.getElementById("connection");
+const roomInfoEl = document.getElementById("roomInfo");
+const roleDisplay = document.getElementById("roleDisplay");
+const factionDisplay = document.getElementById("factionDisplay");
+const grid = document.getElementById("grid");
+const chatBox = document.getElementById("chat");
+const phaseEl = document.getElementById("phase");
+const accusedEl = document.getElementById("accusedDisplay");
+const timerFill = document.getElementById("timerFill");
 
-function handleMsg(msg) {
-  if (msg.type === "system") appendLog("SYS: " + msg.text);
-  else if (msg.type === "room") renderGrid(msg.room);
-  else if (msg.type === "private_role") {
-    ROLE = msg.role;
-    alert("Your role: " + ROLE);
-  } else if (msg.type === "phase") {
-    showPhase(msg.phase, msg.seconds);
-  } else if (msg.type === "chat") {
-    appendLog((msg.from || "Anon") + ": " + msg.text);
+document.getElementById("createJoinBtn").onclick = async () => {
+  const name = document.getElementById("nameInput").value || "joiboi";
+  const rid = document.getElementById("roomInput").value.trim() || "";
+  const res = await createAndJoin(rid, name);
+  currentRoom = res.roomId;
+  mySlot = res.slot;
+  myName = name;
+  roomInfoEl.innerText = `Room: ${currentRoom} • Slot: ${mySlot}`;
+  connEl.innerText = "Room joined (WS connecting...)";
+  // connect WS and set handler
+  wsInstance = connectWS(currentRoom, handleMsg);
+  // identify once ws is open (connectWS will automatically call identify if slot known at open)
+  // wait a little and then call identify in case ws is already open
+  setTimeout(()=> identify(mySlot), 400);
+};
+
+document.getElementById("startBtn").onclick = async () => {
+  if (!currentRoom) return alert("Join a room first");
+  await startGame(currentRoom);
+};
+
+document.getElementById("sendBtn").onclick = () => {
+  const t = document.getElementById("chatInput");
+  if (!t.value.trim()) return;
+  sendChat(t.value.trim());
+  t.value = "";
+};
+
+document.getElementById("accuseBtn").onclick = () => {
+  if (!currentRoom || !myName) return;
+  const target = prompt("Enter name to accuse (exact):");
+  if (!target) return;
+  accuse(myName, target);
+};
+
+document.getElementById("guiltyBtn").onclick = () => {
+  if (!currentRoom || !myName) return;
+  verdictVote(myName, "guilty");
+};
+
+document.getElementById("innocentBtn").onclick = () => {
+  if (!currentRoom || !myName) return;
+  verdictVote(myName, "innocent");
+};
+
+// handle WS messages
+function handleMsg(msg, ws) {
+  console.log("MSG", msg);
+  if (msg.type === "system") {
+    appendChat("System", msg.text);
+    if (msg.text === "ws_open") {
+      connEl.innerText = "WS open";
+    } else if (msg.text === "ws_closed") {
+      connEl.innerText = "WS closed";
+    }
+    return;
+  }
+  if (msg.type === "private_role") {
+    roleDisplay.innerText = `Role: ${msg.role || "Unknown"}`;
+    factionDisplay.innerText = `Faction: ${msg.faction || msg.explain || "Unknown"}`;
+    alert(`Your role: ${msg.role}\n${msg.faction || msg.explain || ""}`);
+    return;
+  }
+  if (msg.type === "phase") {
+    currentPhase = msg.phase;
+    phaseEl.innerText = `${msg.phase} • ${msg.seconds ? msg.seconds + "s" : ""}`;
+    startTimer(msg.seconds || 0);
+    // adjust buttons: accuse active during voting, guilty/innocent during final
+    const phaseLower = (msg.phase || "").toLowerCase();
+    document.getElementById("accuseBtn").disabled = !phaseLower.includes("voting");
+    document.getElementById("guiltyBtn").disabled = true;
+    document.getElementById("innocentBtn").disabled = true;
+    return;
+  }
+  if (msg.type === "room") {
+    renderGrid(msg.room.players || []);
+    return;
+  }
+  if (msg.type === "chat") {
+    appendChat(msg.from || "Anon", msg.text);
+    return;
+  }
+  if (msg.type === "accused_update") {
+    const acc = msg.accused;
+    accusedEl.innerText = acc ? `Accused: ${acc}` : "No accused";
+    return;
+  }
+  if (msg.type === "verdict_phase") {
+    // enable guilty/innocent buttons
+    document.getElementById("guiltyBtn").disabled = false;
+    document.getElementById("innocentBtn").disabled = false;
+    alert(`Verdict time for ${msg.accused}. Please vote Guilty or Innocent.`);
+    return;
   }
 }
 
-function renderGrid(room) {
-  const grid = document.getElementById("grid");
+// grid renderer (5x4)
+function renderGrid(players) {
   grid.innerHTML = "";
-  room.players.forEach(p=>{
-    const el = document.createElement("div"); el.className = "box";
+  // ensure players length is multiple of 5 for a 5x4 grid - but show whatever exists
+  players.forEach(p => {
+    const el = document.createElement("div");
+    el.className = "player";
     if (!p.alive) el.classList.add("dead");
-    el.innerHTML = `<div><strong>${p.name}</strong></div><div>Slot ${p.slot}</div><div>${p.alive ? "Alive" : "Dead"}</div>`;
+    el.innerHTML = `<div style="font-weight:700">${p.name}</div><div class="small">Slot ${p.slot}</div><div class="small">${p.alive ? "Alive" : "Dead"}</div>`;
     grid.appendChild(el);
   });
 }
 
-function appendLog(text) {
-  console.log(text);
+function appendChat(from, text) {
+  const d = document.createElement("div");
+  const time = new Date().toLocaleTimeString();
+  d.textContent = `[${time}] ${from}: ${text}`;
+  chatBox.appendChild(d);
+  chatBox.scrollTop = chatBox.scrollHeight;
 }
 
-function showPhase(phase, seconds) {
-  document.getElementById("phaseName").textContent = phase;
-  document.getElementById("phaseTime").textContent = seconds ? `${seconds}s` : "";
-  startTimer(seconds || 0);
-}
-
+// timer bar control
 function startTimer(seconds) {
-  const fill = document.getElementById("timerFill");
   if (timerInterval) clearInterval(timerInterval);
+  const fill = timerFill;
   if (!seconds || seconds <= 0) { fill.style.width = "0%"; return; }
   let remaining = seconds;
   fill.style.width = "100%";
-  timerInterval = setInterval(()=>{
+  timerInterval = setInterval(()=> {
     remaining--;
-    let pct = Math.max(0, (remaining / seconds) * 100);
+    const pct = Math.max(0, (remaining/seconds) * 100);
     fill.style.width = pct + "%";
     if (remaining <= 0) clearInterval(timerInterval);
   }, 1000);
 }
 
-// ui buttons
-document.getElementById("createRoomBtn").onclick = async ()=> {
-  const res = await fetch("/create-room", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ host_name: "Host" })});
-  const data = await res.json();
-  alert("Created room: " + data.roomId);
+// allow user to inspect room details
+window.fetchRoomInfo = async () => {
+  if (!currentRoom) return;
+  const info = await fetchRoom(currentRoom);
+  console.log("RoomInfo", info);
 };
 
-document.getElementById("startBtn").onclick = async ()=> {
-  if (!ROOM_ID) { alert("No room id"); return; }
-  await startGame(ROOM_ID);
-};
+// If user reloads page but had room in URL (you can enhance this), they can reconnect manually.
 
-boot();
 </script>
 </body>
   </html>
