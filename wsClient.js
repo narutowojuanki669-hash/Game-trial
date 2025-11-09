@@ -1,5 +1,4 @@
-// wsClient.js — updated: dynamic vote UI + faction display handling + contact action
-// Set BACKEND to your backend URL (no trailing slash)
+// wsClient.js - Updated client to show vote UI and faction mates in grid
 export const BACKEND = "https://town-of-shadows-server.onrender.com";
 
 let ws = null;
@@ -119,39 +118,33 @@ export function closeWS() {
 
 export function setExternalHandler(fn) { externalHandler = fn; }
 
-/* --- Utility: dynamic voting UI helpers (no change needed to index.html) --- */
-
-/*
-  The frontend's index.html may not have a vote section. To be robust
-  we dynamically create a vote UI when voting phase starts and remove it
-  when voting ends.
+/* UI helpers that the existing index.html will use via the externalHandler callback:
+   - When a phase message with players list arrives, the frontend should call wsClient.showVoteUI(players)
+   - When a faction_mates message arrives, the frontend should update its grid to show roles for those slots
 */
+
 export function showVoteUI(playersArray) {
-  // playersArray expected to be array of {slot, name, alive, ...} or array of names
   let container = document.getElementById("dynamic-vote-ui");
   if (!container) {
     container = document.createElement("div");
     container.id = "dynamic-vote-ui";
     container.style.marginTop = "8px";
     container.style.display = "block";
-    const main = document.querySelector(".card:last-of-type") || document.body;
-    main.appendChild(container);
+    const parent = document.querySelector(".card") || document.body;
+    parent.appendChild(container);
   }
   container.innerHTML = "";
   const title = document.createElement("div");
   title.style.fontWeight = "700";
   title.style.marginBottom = "6px";
-  title.textContent = "Vote to eliminate:";
+  title.textContent = "Vote (type a number in chat or use the dropdown):";
   container.appendChild(title);
   const sel = document.createElement("select");
   sel.id = "dynamicVoteSelect";
   sel.style.padding = "8px";
   sel.style.borderRadius = "6px";
   sel.style.marginRight = "8px";
-  // populate options
-  const list = Array.isArray(playersArray) && playersArray.length && typeof playersArray[0] === "object"
-    ? playersArray.filter(p => p.alive).map(p => ({val: p.name, label: p.name}))
-    : (Array.isArray(playersArray) ? playersArray.map(n => ({val: n, label: n})) : []);
+  const list = Array.isArray(playersArray) ? playersArray.filter(p => p.alive).map(p => ({val: String(p.slot), label: `Player ${p.slot}`})) : [];
   list.forEach(it => {
     const o = document.createElement("option");
     o.value = it.val; o.textContent = it.label;
@@ -164,7 +157,6 @@ export function showVoteUI(playersArray) {
     const choice = sel.value;
     if (!choice) return alert("Select a player to vote");
     vote(myName || `Player ${mySlot}`, choice);
-    // hide UI after voting
     container.style.display = "none";
   };
   container.appendChild(btn);
@@ -174,5 +166,3 @@ export function hideVoteUI() {
   const container = document.getElementById("dynamic-vote-ui");
   if (container) container.style.display = "none";
 }
-
-/* End of wsClient.js */
