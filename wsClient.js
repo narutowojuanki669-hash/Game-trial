@@ -1,142 +1,130 @@
-// wsClient.js – Town of Shadows frontend connection
-
+// wsClient.js - corrected, exported functions and helpers
+// IMPORTANT: set BACKEND to your render host (no trailing slash)
 const BACKEND = "https://town-of-shadows-server.onrender.com";
-const ROOM_ID = "A11368"; // or whichever room you’re using
-let ws;
+
+let ws = null;
+let currentRoom = null;
 let mySlot = null;
+let myName = null;
 
-// connect to WebSocket
-function connectWS() {
-  const wsUrl = BACKEND.replace("https", "wss") + `/ws/${ROOM_ID}`;
-  ws = new WebSocket(wsUrl);
-
-  ws.onopen = () => {
-    console.log("Connected to WS");
-    document.getElementById("connection").innerText = "🟢 Connected to backend";
-  };
-
-  ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-    console.log("WS:", msg);
-
-    // 🔹 handle role assignment popup
-    if (msg.type === "private_role") {
-      const roleText = msg.role || "Unknown";
-      const explain = msg.explain ? "\n" + msg.explain : "";
-      alert(`Your role: ${roleText}${explain}`);
-      return;
-    }
-
-    // 🔹 system messages
-    if (msg.type === "system") {
-      appendChat("🌀", msg.text);
-      return;
-    }
-
-    // 🔹 chat messages
-    if (msg.type === "chat") {
-      appendChat(msg.from, msg.text);
-      return;
-    }
-
-    // 🔹 phase updates
-    if (msg.type === "phase") {
-      const phaseBox = document.getElementById("phase");
-      if (phaseBox) {
-        phaseBox.innerText = `${msg.phase} (${msg.seconds}s)`;
-      }
-      return;
-    }
-
-    // 🔹 room updates (grid refresh)
-    if (msg.type === "room") {
-      const grid = document.getElementById("playerGrid");
-      if (grid) renderGrid(msg.room.players);
-      return;
-    }
-  };
-
-  ws.onclose = () => {
-    document.getElementById("connection").innerText = "🔴 Disconnected (retrying...)";
-    setTimeout(connectWS, 4000);
-  };
-}
-
-function identify(slot) {
-  mySlot = slot;
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "identify", slot }));
-  }
-}
-
-function sendChat(text) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({ type: "chat", from: `Player ${mySlot}`, text }));
-}
-
-function appendChat(from, text) {
-  const chatBox = document.getElementById("chatBox");
-  if (!chatBox) return;
-  const div = document.createElement("div");
-  div.textContent = `${from}: ${text}`;
-  chatBox.appendChild(div);
-  chatBox.scrollTop = chatBox.scrollHeight;
-}
-
-function renderGrid(players) {
-  const grid = document.getElementById("playerGrid");
-  if (!grid) return;
-  grid.innerHTML = "";
-  const table = document.createElement("table");
-  table.style.width = "100%";
-  table.style.borderCollapse = "collapse";
-  table.style.textAlign = "center";
-
-  let row;
-  players.forEach((p, i) => {
-    if (i % 5 === 0) {
-      row = document.createElement("tr");
-      table.appendChild(row);
-    }
-    const cell = document.createElement("td");
-    cell.style.border = "1px solid #555";
-    cell.style.padding = "6px";
-    cell.style.minWidth = "70px";
-    cell.style.backgroundColor = p.alive ? "#2a2a2a" : "#5a1a1a";
-    cell.style.color = "#fff";
-    cell.textContent = `${p.name}\n${p.alive ? "" : "(dead)"}`;
-    row.appendChild(cell);
-  });
-  grid.appendChild(table);
-}
-
-async function startGame() {
-  try {
-    const res = await fetch(`${BACKEND}/start-game/${ROOM_ID}`, { method: "POST" });
+// Create room (if roomId blank it creates a new one) and join
+export async function createAndJoin(roomId, name) {
+  myName = name || "joiboi";
+  let chosenRoom = roomId;
+  if (!chosenRoom) {
+    // Create a room and use it
+    const res = await fetch(`${BACKEND}/create-room`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ host_name: myName })
+    });
     const data = await res.json();
-    console.log("Game started:", data);
-  } catch (e) {
-    console.error("Start failed:", e);
+    chosenRoom = data.roomId;
   }
+
+  // Join the room (assigns first free slot)
+  const joinRes = await fetch(`${BACKEND}/join-room`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ roomId: chosenRoom, name: myName })
+  });
+  const j = await joinRes.json();
+  currentRoom = chosenRoom;
+  mySlot = j.slot;
+  // return the important info
+  return { roomId: chosenRoom, slot: mySlot, role: j.role, room: j.room };
 }
 
-// 🟢 auto connect
-window.addEventListener("DOMContentLoaded", () => {
-  connectWS();
+// Connect WS to room; onMsg is a message handler (msg, ws)
+export function connectWS(roomId, onMsg) {
+  if (!roomId) throw new Error("roomId required for connectWS");
+  const wsUrl = `${BACKEND.replace("https", "wss")}/ws/${roomId}`;
+  ws = new WebSocket(wsUrl);
+  ws.onopen = () => {
+    console.log("WS open", wsUrl);
+    // let the caller know
+    if (onMsg) onMsg({ type: "system", text: "ws_open" }, ws);
+    // if we already have slot info, identify immediately
+    if (mySlot) identify(mySlot);
+  };
+  ws.onmessage = (ev) => {
+    let parsed;
+    try { parsed = JSON.parse(ev.data); } catch(e){ console.error("bad json", e, ev.data); return; }
+    if (onMsg) onMsg(parsed, ws);
+  };
+  ws.onclose = () => {
+    console.log("WS closed, will try reconnect in 3s");
+    if (onMsg) onMsg({ type: "system", text: "ws_closed" }, ws);
+    setTimeout(()=> {
+      try { connectWS(roomId, onMsg); } catch(e){ console.error(e); }
+    }, 3000);
+  };
+  ws.onerror = (e) => console.error("WS error", e);
+  return ws;
+}
 
-  const sendBtn = document.getElementById("sendBtn");
-  const chatInput = document.getElementById("chatInput");
-  if (sendBtn && chatInput) {
-    sendBtn.onclick = () => {
-      if (chatInput.value.trim()) {
-        sendChat(chatInput.value.trim());
-        chatInput.value = "";
-      }
-    };
+// Identify this websocket connection as a specific slot on server
+export function identify(slot) {
+  mySlot = slot;
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    // will identify on open
+    return;
   }
+  ws.send(JSON.stringify({ type: "identify", slot }));
+}
 
-  const startBtn = document.getElementById("startBtn");
-  if (startBtn) {
-    startBtn.onclick = () => startGame();
-  }
-});
+// send a chat message via WS
+export function sendChat(text, channel = "public") {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const payload = { type: "chat", from: myName || `Player ${mySlot}`, channel, text };
+  ws.send(JSON.stringify(payload));
+}
+
+// queue a night action via WS (client-side calls this)
+export function sendAction(action) {
+  // action: { actor, target, type, actor_role }
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: "player_action", action }));
+}
+
+// accuse during voting phase (simple wrapper)
+export function accuse(from, target) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: "accuse", from, target }));
+}
+
+// send a verdict vote (guilty / innocent)
+export function verdictVote(from, choice) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: "verdict_vote", from, choice }));
+}
+
+// direct vote during voting stage
+export function vote(from, target) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: "vote", from, target }));
+}
+
+// start game by calling REST start endpoint (also exposed)
+export async function startGame(roomId) {
+  if (!roomId && !currentRoom) throw new Error("roomId required");
+  const rid = roomId || currentRoom;
+  const res = await fetch(`${BACKEND}/start-game/${rid}`, { method: "POST" });
+  return await res.json();
+}
+
+// get room info via REST
+export async function fetchRoom(roomId) {
+  const rid = roomId || currentRoom;
+  const r = await fetch(`${BACKEND}/room/${rid}`);
+  return await r.json();
+}
+
+// convenience to gracefully close WS
+export function closeWS() {
+  if (ws) ws.close();
+  ws = null;
+  currentRoom = null;
+  mySlot = null;
+  myName = null;
+    }
