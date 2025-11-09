@@ -1,4 +1,4 @@
-// wsClient.js — WebSocket client for Town of Shadows frontend
+// wsClient.js — updated: dynamic vote UI + faction display handling + contact action
 // Set BACKEND to your backend URL (no trailing slash)
 export const BACKEND = "https://town-of-shadows-server.onrender.com";
 
@@ -37,7 +37,6 @@ export async function createAndJoin(roomId, name) {
   connectWS(currentRoom, (m) => {
     if (externalHandler) externalHandler(m);
   });
-  // identify once ws open
   setTimeout(()=> { if (ws && ws.readyState === WebSocket.OPEN) identify(mySlot); }, 400);
   return {roomId: chosenRoom, slot: mySlot, role: j.role, room: j.room};
 }
@@ -119,3 +118,61 @@ export function closeWS() {
 }
 
 export function setExternalHandler(fn) { externalHandler = fn; }
+
+/* --- Utility: dynamic voting UI helpers (no change needed to index.html) --- */
+
+/*
+  The frontend's index.html may not have a vote section. To be robust
+  we dynamically create a vote UI when voting phase starts and remove it
+  when voting ends.
+*/
+export function showVoteUI(playersArray) {
+  // playersArray expected to be array of {slot, name, alive, ...} or array of names
+  let container = document.getElementById("dynamic-vote-ui");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "dynamic-vote-ui";
+    container.style.marginTop = "8px";
+    container.style.display = "block";
+    const main = document.querySelector(".card:last-of-type") || document.body;
+    main.appendChild(container);
+  }
+  container.innerHTML = "";
+  const title = document.createElement("div");
+  title.style.fontWeight = "700";
+  title.style.marginBottom = "6px";
+  title.textContent = "Vote to eliminate:";
+  container.appendChild(title);
+  const sel = document.createElement("select");
+  sel.id = "dynamicVoteSelect";
+  sel.style.padding = "8px";
+  sel.style.borderRadius = "6px";
+  sel.style.marginRight = "8px";
+  // populate options
+  const list = Array.isArray(playersArray) && playersArray.length && typeof playersArray[0] === "object"
+    ? playersArray.filter(p => p.alive).map(p => ({val: p.name, label: p.name}))
+    : (Array.isArray(playersArray) ? playersArray.map(n => ({val: n, label: n})) : []);
+  list.forEach(it => {
+    const o = document.createElement("option");
+    o.value = it.val; o.textContent = it.label;
+    sel.appendChild(o);
+  });
+  container.appendChild(sel);
+  const btn = document.createElement("button");
+  btn.textContent = "Vote";
+  btn.onclick = () => {
+    const choice = sel.value;
+    if (!choice) return alert("Select a player to vote");
+    vote(myName || `Player ${mySlot}`, choice);
+    // hide UI after voting
+    container.style.display = "none";
+  };
+  container.appendChild(btn);
+}
+
+export function hideVoteUI() {
+  const container = document.getElementById("dynamic-vote-ui");
+  if (container) container.style.display = "none";
+}
+
+/* End of wsClient.js */
