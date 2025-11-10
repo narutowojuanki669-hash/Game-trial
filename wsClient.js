@@ -1,5 +1,5 @@
 
-// wsClient.js - frontend connection and UI logic (final v2)
+// wsClient.js - frontend connection and UI logic (tos_file final)
 // Set BACKEND to your backend URL (no trailing slash)
 const BACKEND = "https://town-of-shadows-server.onrender.com";
 
@@ -12,6 +12,7 @@ let selectedVote = null;
 let phaseSeconds = 0;
 let phaseTimer = null;
 let playersState = [];
+let gameStarted = false;
 
 function openRules(){ document.getElementById("rulesModal").style.display="flex"; }
 function closeRules(){ document.getElementById("rulesModal").style.display="none"; }
@@ -53,8 +54,23 @@ function handleMsg(msg){
   if (msg.type==="private_role"){ myRole = msg.role; addChat(`🔒 Your role: ${myRole}`); }
   if (msg.type==="room"){ playersState = msg.room.players; renderGrid(playersState); }
   if (msg.type==="phase"){ handlePhase(msg.phase, msg.seconds, msg.players||null); }
-  if (msg.type==="faction_mates"){ applyFactionDisplay(msg.mates); }
+  if (msg.type==="faction_mates"){
+    // only apply faction info after the game actually started
+    if (gameStarted) applyFactionDisplay(msg.mates);
+    else {
+      // cache and apply after start
+      setTimeout(()=>{ applyFactionDisplay(msg.mates); }, 800);
+    }
+  }
   if (msg.type==="accused_update"){ if (msg.accused) addChat(`⚖️ ${msg.accused} is accused.`); else addChat("No one is accused."); }
+  if (msg.type==="game_started"){
+    gameStarted = true;
+    addChat("🕯️ " + (msg.text || "Game started"));
+    // request fresh room state
+    if (ws && ws.readyState===WebSocket.OPEN){
+      // no explicit request endpoint; room updates are broadcasted by server on start
+    }
+  }
 }
 
 function addChat(text){
@@ -107,7 +123,15 @@ function changeVote(){ if (!selectedVote) alert("Select a player first"); else {
 
 function sendChat(){ const input = document.getElementById("chatInput"); const text = input.value.trim(); if (!text || !ws || ws.readyState!==WebSocket.OPEN) return; ws.send(JSON.stringify({type:"chat", from:myName, text})); input.value=""; }
 
-function startGame(){ if (!ws || ws.readyState!==WebSocket.OPEN){ if (!roomId) return alert("No room selected"); fetch(`${BACKEND}/start-game/${roomId}`, {method:"POST"}).then(r=>r.json()).then(d=>{ addChat("Game start requested via HTTP."); }).catch(e=>{ alert("Start request failed."); }); return; } ws.send(JSON.stringify({type:"start_game"})); addChat("Game start requested."); }
+function startGame(){
+  if (ws && ws.readyState===WebSocket.OPEN){
+    ws.send(JSON.stringify({type:"start_game"}));
+    addChat("Game start requested via websocket.");
+    return;
+  }
+  if (!roomId) return alert("No room selected");
+  fetch(`${BACKEND}/start-game/${roomId}`, {method:"POST"}).then(r=>r.json()).then(d=>{ addChat("Game start requested via HTTP."); }).catch(e=>{ alert("Start request failed."); });
+}
 
 function handlePhase(phaseName, seconds, playersList){
   document.getElementById("phaseLabel").innerText = `Phase: ${phaseName}`;

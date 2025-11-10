@@ -1,22 +1,127 @@
 
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>Town of Shadows - Final</title>
-<style>body{background:#071226;color:#ecf0f3;font-family:Inter,Arial;margin:0}.topbar{position:fixed;top:0;left:0;right:0;background:#0b1320;color:#fff;padding:10px 14px;z-index:80;display:flex;align-items:center;justify-content:space-between}.phaseLabel{font-weight:600}.phaseBar{height:8px;background:#0f1720;border-radius:6px;overflow:hidden;margin-top:6px;width:320px}.phaseFill{height:100%;width:0%;transition:width 1s linear;background:linear-gradient(90deg,#f59e0b,#f97316)}.rulesBtn{background:#0b1320;color:#f3f4f6;border:1px solid #24303d;padding:8px 10px;border-radius:8px;cursor:pointer}.container{padding:100px 14px 20px;max-width:1100px;margin:auto}#playerGrid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px} .player{background:#071226;padding:12px;border-radius:12px;text-align:center;cursor:pointer;color:#e6edf3;border:1px solid #102232;min-height:70px}.player.dead{opacity:0.35;text-decoration:line-through}.roleLabel{display:block;font-size:12px;color:#9ae6b4;margin-top:6px;font-weight:600}#votePanel{margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.voteBtn{background:#0b1320;border:1px solid #24303d;color:#fff;padding:8px 10px;border-radius:8px;cursor:pointer}#chatBox{background:#02101a;height:180px;overflow:auto;padding:8px;border-radius:10px;border:1px solid #072033;margin-top:12px}input[type=text]{padding:8px;border-radius:8px;border:1px solid #163043;background:#02101a;color:#fff;width:200px}button{padding:8px 10px;border-radius:8px;background:#071226;color:#fff;border:1px solid #163043;cursor:pointer}.selected{outline:3px solid #f97316}.modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(2,6,23,0.7);display:flex;align-items:center;justify-content:center;z-index:200}.modalContent{background:#041324;padding:18px;border-radius:10px;width:92%;max-width:820px;max-height:84vh;overflow:auto;border:1px solid #1b3344}.small{font-size:13px;color:#cbd5e1;line-height:1.45}.closeX{float:right;cursor:pointer;font-weight:700}@media(max-width:700px){#playerGrid{grid-template-columns:repeat(4,1fr)}.phaseBar{width:180px}}</style></head><body>
-<div class="topbar"><div><div class="phaseLabel" id="phaseLabel">Phase: —</div><div class="phaseBar"><div id="phaseFill" class="phaseFill"></div></div></div><div style="display:flex;gap:10px;align-items:center;"><button class="rulesBtn" onclick="openRules()">Rules</button><div id="statusLine">Not connected</div></div></div>
-<div class="container">
-  <div id="connect">
-    <input id="playerName" placeholder="Your name" />
-    <input id="roomId" placeholder="Room ID (leave blank to create)" />
-    <button onclick="createOrJoin()">Create / Join</button>
-    <button onclick="startGame()">Start Game</button>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Town of Shadows - TOS</title>
+<style>
+  body { background:#071226; color:#ecf0f3; font-family:Inter, Arial; margin:0; }
+  .topbar { position:fixed; top:0; left:0; right:0; background:#0b1320; color:#fff; padding:10px 14px; z-index:80; display:flex; align-items:center; justify-content:space-between; }
+  .phaseLabel { font-weight:600; }
+  .phaseBar { height:8px; background:#0f1720; border-radius:6px; overflow:hidden; margin-top:6px; width:320px; }
+  .phaseFill { height:100%; width:0%; transition: width 1s linear; background:linear-gradient(90deg,#f59e0b,#f97316); }
+  .rulesBtn { background:#0b1320; color:#f3f4f6; border:1px solid #24303d; padding:8px 10px; border-radius:8px; cursor:pointer; }
+  .container { padding:100px 14px 20px; max-width:1100px; margin:auto; }
+  #playerGrid { display:grid; grid-template-columns: repeat(5, 1fr); gap:8px; }
+  .player { background:#071226; padding:12px; border-radius:12px; text-align:center; cursor:pointer; color:#e6edf3; border:1px solid #102232; min-height:70px; }
+  .player.dead { opacity:0.35; text-decoration:line-through; }
+  .roleLabel { display:block; font-size:12px; color:#9ae6b4; margin-top:6px; font-weight:600; }
+  #votePanel { margin-top:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .voteBtn { background:#0b1320; border:1px solid #24303d; color:#fff; padding:8px 10px; border-radius:8px; cursor:pointer; }
+  #chatBox { background:#02101a; height:180px; overflow:auto; padding:8px; border-radius:10px; border:1px solid #072033; margin-top:12px; }
+  input[type=text] { padding:8px; border-radius:8px; border:1px solid #163043; background:#02101a; color:#fff; width:200px; }
+  button { padding:8px 10px; border-radius:8px; background:#071226; color:#fff; border:1px solid #163043; cursor:pointer; }
+  .selected { outline:3px solid #f97316; }
+  .modal { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(2,6,23,0.7); display:flex; align-items:center; justify-content:center; z-index:200; }
+  .modalContent { background:#041324; padding:18px; border-radius:10px; width:92%; max-width:820px; max-height:84vh; overflow:auto; border:1px solid #1b3344; }
+  .small { font-size:13px; color:#cbd5e1; line-height:1.45; }
+  .closeX { float:right; cursor:pointer; font-weight:700; }
+  @media (max-width:700px){ #playerGrid{grid-template-columns:repeat(4,1fr);} .phaseBar{width:180px;} }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div>
+      <div class="phaseLabel" id="phaseLabel">Phase: —</div>
+      <div class="phaseBar"><div id="phaseFill" class="phaseFill"></div></div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <button class="rulesBtn" onclick="openRules()">Rules</button>
+      <div id="statusLine">Not connected</div>
+    </div>
   </div>
-  <div id="gameArea" style="display:none;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><div><strong id="lobbyLabel">Lobby</strong></div><div><button onclick="startGame()">Start Game</button></div></div>
-    <div id="playerGrid"></div>
-    <div id="votePanel" style="display:none;"><div id="voteControls"><button class="voteBtn" onclick="castVote('skip')" id="skipBtn">Skip</button><button class="voteBtn" onclick="confirmVote()" id="confirmBtn">Confirm Vote</button><button class="voteBtn" onclick="changeVote()" id="changeBtn">Change Vote</button></div><div id="voteMsg" style="margin-left:10px;color:#cbd5e1;"></div></div>
-    <div id="chatBox"></div>
-    <div style="margin-top:8px;display:flex;gap:8px;align-items:center;"><input id="chatInput" type="text" placeholder="Type message or number to vote..." /><button onclick="sendChat()">Send</button></div>
+
+  <div class="container">
+    <div id="connect">
+      <input id="playerName" placeholder="Your name" />
+      <input id="roomId" placeholder="Room ID (leave blank to create)" />
+      <button onclick="createOrJoin()">Create / Join</button>
+      <button onclick="startGame()">Start Game</button>
+    </div>
+
+    <div id="gameArea" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div><strong id="lobbyLabel">Lobby</strong></div>
+        <div><button onclick="startGame()">Start Game</button></div>
+      </div>
+
+      <div id="playerGrid"></div>
+
+      <div id="votePanel" style="display:none;">
+        <div id="voteControls">
+          <button class="voteBtn" onclick="castVote('skip')" id="skipBtn">Skip</button>
+          <button class="voteBtn" onclick="confirmVote()" id="confirmBtn">Confirm Vote</button>
+          <button class="voteBtn" onclick="changeVote()" id="changeBtn">Change Vote</button>
+        </div>
+        <div id="voteMsg" style="margin-left:10px;color:#cbd5e1;"></div>
+      </div>
+
+      <div id="chatBox"></div>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
+        <input id="chatInput" type="text" placeholder="Type message or number to vote..." />
+        <button onclick="sendChat()">Send</button>
+      </div>
+    </div>
   </div>
-</div>
-<div id="rulesModal" class="modal" style="display:none;"><div class="modalContent"><div><span class="closeX" onclick="closeRules()">✕</span><h2>Town of Shadows — Rules</h2></div><div class="small"><h3>Overview</h3><p>The game is a social deduction game with multiple factions: <strong>Town</strong>, <strong>Mafia</strong>, <strong>Cult</strong>, and <strong>Neutrals</strong>. Players have hidden roles and abilities.</p><h3>Phases</h3><p>Night: 40s — players with night actions use them. Mafia and Cult can chat privately at night. Medium can chat with dead. Cupid can chat with other cupids. Citizen faction cannot chat at night unless they have a skill.</p><p>Day discussion: 60s — open chat for alive players. Bots will send 1–2 messages spaced naturally.</p><p>Day vote: 20s — voting happens after discussion. Players may type a player number to vote or use the grid. Skip is allowed.</p><p>Defence: 10s — accused defends.</p><p>Final verdict: 10s — guilty/innocent votes.</p><h3>Win conditions</h3><ul><li><strong>Town:</strong> wins by eliminating all Mafia.</li><li><strong>Mafia:</strong> wins when Town is eliminated and Mafia count meets rules.</li><li><strong>Cult:</strong> wins if cult members are equal to or exceed sum of all other factions.</li><li><strong>Neutrals:</strong> have their own win conditions (e.g., Jester, Executioner).</li></ul><h3>Important role notes</h3><p><strong>Doctor:</strong> Can heal any player any number of nights (including themselves and cult members). Heal prevents death from normal kills but does NOT prevent cult conversion. Beastman ignores heal and will kill through it.</p><p><strong>Bodyguard:</strong> If protecting a target, will die in place of the target on a successful kill.</p><p><strong>Vigilante:</strong> Can only successfully kill if target is Mafia (including culted mafia). If target is not Mafia, the shot fails and target survives.</p><p><strong>Spy (Mafia):</strong> Works like the spy/contact role — can contact a player. If contact targets a Mafia member, spy will gain info/convert contact as per rules.</p><p><strong>Beastman (Mafia):</strong> Requires contact to unlock beast kill which ignores protection.</p><p><strong>Cult Leader & Fanatic:</strong> Cult has a leader and fanatic. Fanatic is hidden from cult until contacted. Cult converts players at night; converted players become cult and fight for cult.</p><h3>Voting</h3><p>During vote phase you may click a player's tile or type the player's number in chat to cast vote. Use Skip to abstain. After accusations, defence & verdict decide lynch.</p><h3>Bots</h3><p>Bots fill empty slots. They talk sparingly during discussion (1–2 messages spaced 6–15s apart), behave logically in votes, and try not to spam.</p><h3>Visibility</h3><p>Before the game starts roles are hidden. After the game starts, faction members (Mafia and Cult) will see their teammates and their roles displayed on the grid. Fanatic remains hidden until contacted by cult leader or contacted.</p><h3>Misc</h3><p>Player roles are revealed on death unless a skill explicitly hides them. Jester and Executioner may win as individuals if their conditions are met but the game continues for the main factions.</p><div style="margin-top:12px;text-align:right;"><button onclick="closeRules()">Close</button></div></div></div></div>
-<script src="wsClient.js"></script></body></html>
+
+  <div id="rulesModal" class="modal" style="display:none;">
+    <div class="modalContent">
+      <div><span class="closeX" onclick="closeRules()">✕</span><h2>Town of Shadows — Rules</h2></div>
+      <div class="small">
+        <h3>Overview</h3>
+        <p>The game is a social deduction game with multiple factions: <strong>Town</strong>, <strong>Mafia</strong>, <strong>Cult</strong>, and <strong>Neutrals</strong>. Players have hidden roles and abilities.</p>
+
+        <h3>Phases</h3>
+        <p>Night: 40s — players with night actions use them. Mafia and Cult can chat privately at night. Medium can chat with dead. Cupid can chat with other cupids. Citizen faction cannot chat at night unless they have a skill.</p>
+        <p>Day discussion: 60s — open chat for alive players. Bots will send 1–2 messages spaced naturally.</p>
+        <p>Day vote: 20s — voting happens after discussion. Players may type a player number to vote or use the grid. Skip is allowed.</p>
+        <p>Defence: 10s — accused defends.</p>
+        <p>Final verdict: 10s — guilty/innocent votes.</p>
+
+        <h3>Win conditions</h3>
+        <ul>
+          <li><strong>Town:</strong> wins by eliminating all Mafia.</li>
+          <li><strong>Mafia:</strong> wins when Town is eliminated and Mafia count meets rules.</li>
+          <li><strong>Cult:</strong> wins if cult members are equal to or exceed sum of all other factions.</li>
+          <li><strong>Neutrals:</strong> have their own win conditions (e.g., Jester, Executioner).</li>
+        </ul>
+
+        <h3>Important role notes</h3>
+        <p><strong>Doctor:</strong> Can heal any player any number of nights (including themselves and cult members). Heal prevents death from normal kills but does NOT prevent cult conversion. Beastman ignores heal and will kill through it.</p>
+        <p><strong>Bodyguard:</strong> If protecting a target, will die in place of the target on a successful kill.</p>
+        <p><strong>Vigilante:</strong> Can only successfully kill if target is Mafia (including culted mafia). If target is not Mafia, the shot fails and target survives.</p>
+        <p><strong>Spy (Mafia):</strong> Works like the spy/contact role — can contact a player. If contact targets a Mafia member, spy will gain info/convert contact as per rules.</p>
+        <p><strong>Beastman (Mafia):</strong> Requires contact to unlock beast kill which ignores protection.</p>
+        <p><strong>Cult Leader & Fanatic:</strong> Cult has a leader and fanatic. Fanatic is hidden from cult until contacted. Cult converts players at night; converted players become cult and fight for cult.</p>
+
+        <h3>Voting</h3>
+        <p>During vote phase you may click a player's tile or type the player's number in chat to cast vote. Use Skip to abstain. After accusations, defence & verdict decide lynch.</p>
+
+        <h3>Bots</h3>
+        <p>Bots fill empty slots. They talk sparingly during discussion (1–2 messages spaced 6–15s apart), behave logically in votes, and try not to spam.</p>
+
+        <h3>Visibility</h3>
+        <p>Before the game starts roles are hidden. After the game starts, faction members (Mafia and Cult) will see their teammates and their roles displayed on the grid. Fanatic remains hidden until contacted by cult leader or contacted.</p>
+
+        <h3>Misc</h3>
+        <p>Player roles are revealed on death unless a skill explicitly hides them. Jester and Executioner may win as individuals if their conditions are met but the game continues for the main factions.</p>
+
+        <div style="margin-top:12px;text-align:right;"><button onclick="closeRules()">Close</button></div>
+      </div>
+    </div>
+  </div>
+
+<script src="wsClient.js"></script>
+</body>
+</html>
