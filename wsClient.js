@@ -1,6 +1,6 @@
 
-// wsClient.js - frontend connection and UI logic (tos_file final)
-// Set BACKEND to your backend URL (no trailing slash)
+// wsClient.js - resilient connection logic and UI tweaks
+// Set BACKEND to your backend URL (no trailing slash preferred)
 const BACKEND = "https://town-of-shadows-server.onrender.com";
 
 let ws = null;
@@ -13,6 +13,13 @@ let phaseSeconds = 0;
 let phaseTimer = null;
 let playersState = [];
 let gameStarted = false;
+let connectedRoute = null;
+
+function showConnecting(state){
+  const status = document.getElementById("statusLine");
+  if (state) status.innerText = "Connecting...";
+  else status.innerText = `Room ${roomId} | You: ${myName} (slot ${mySlot})`;
+}
 
 function openRules(){ document.getElementById("rulesModal").style.display="flex"; }
 function closeRules(){ document.getElementById("rulesModal").style.display="none"; }
@@ -21,27 +28,62 @@ function createOrJoin(){
   myName = document.getElementById("playerName").value || "joiboi";
   roomId = document.getElementById("roomId").value || null;
   if (!roomId){
+    showConnecting(true);
     fetch(`${BACKEND}/create-room`, {
       method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({host_name: myName})
-    }).then(r=>r.json()).then(d=>{ roomId=d.roomId; joinRoom(); });
+    }).then(r=>r.json()).then(d=>{ roomId=d.roomId; joinRoom(); }).catch(e=>{ alert("Create failed"); showConnecting(false); });
   } else joinRoom();
 }
 
 function joinRoom(){
+  showConnecting(true);
   fetch(`${BACKEND}/join-room`, {
     method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({roomId, name: myName})
   }).then(r=>r.json()).then(d=>{
     mySlot=d.slot; myRole=d.role;
     document.getElementById("statusLine").innerText = `Room ${roomId} | You: ${myName} (slot ${mySlot})`;
-    openWS();
+    openWSWithRetries();
     document.getElementById("connect").style.display="none";
     document.getElementById("gameArea").style.display="block";
-  }).catch(e=>{ alert("Join failed"); });
+  }).catch(e=>{ alert("Join failed"); showConnecting(false); });
 }
 
-function openWS(){
-  ws = new WebSocket(`${BACKEND.replace("https","wss")}/ws/${roomId}`);
-  ws.onopen = ()=>{ if (mySlot) ws.send(JSON.stringify({type:"identify", slot: mySlot})); };
+function openWSWithRetries(){
+  // Try multiple websocket URL variations: /ws/{roomId}, /ws/{roomId}/, /ws, /ws/
+  const candidates = [
+    `${BACKEND.replace("https","wss")}/ws/${roomId}`,
+    `${BACKEND.replace("https","wss")}/ws/${roomId}/`,
+    `${BACKEND.replace("https","wss")}/ws`,
+    `${BACKEND.replace("https","wss")}/ws/`
+  ];
+  let i=0;
+  showConnecting(true);
+  const tryNext = ()=>{
+    if (i>=candidates.length) { showConnecting(false); alert("WebSocket connect failed"); return; }
+    const url=candidates[i++]; connectedRoute=url;
+    ws = new WebSocket(url);
+    let opened=false;
+    const to = setTimeout(()=>{ if (!opened){ try { ws.close(); } catch{}; tryNext(); } },5000);
+    ws.onopen = ()=>{ opened=true; clearTimeout(to); showConnecting(false); setupWSHandlers(); bindIdentify(); };
+    ws.onmessage = (ev)=>{ const msg = JSON.parse(ev.data); handleMsg(msg); };
+    ws.onclose = ()=>{ if (!opened) { tryNext(); } else { document.getElementById("statusLine").innerText = "Disconnected"; } };
+    ws.onerror = ()=>{ };
+  };
+  tryNext();
+}
+
+function bindIdentify(){
+  if (!ws || ws.readyState!==WebSocket.OPEN) return;
+  // If connected to generic /ws (without room in URL), send connect_to first
+  if (connectedRoute && (connectedRoute.endsWith("/ws") || connectedRoute.endsWith("/ws/"))){
+    ws.send(JSON.stringify({type:"connect_to", room: roomId, slot: mySlot}));
+  } else {
+    // connected to ws/{roomId} directly - just identify
+    ws.send(JSON.stringify({type:"identify", slot: mySlot}));
+  }
+}
+
+function setupWSHandlers(){
   ws.onmessage = (ev)=>{ const msg = JSON.parse(ev.data); handleMsg(msg); };
   ws.onclose = ()=>{ document.getElementById("statusLine").innerText = "Disconnected"; };
   ws.onerror = (e)=>{ console.error("WS error", e); };
@@ -65,6 +107,9 @@ function handleMsg(msg){
   }
 }
 
+def_write_path = None
+
+# helper UI functions (addChat, renderGrid, voting, phase timer) - same as prior code
 function addChat(text){
   const cb = document.getElementById("chatBox");
   cb.innerHTML += `<div>${text}</div>`; cb.scrollTop = cb.scrollHeight;
