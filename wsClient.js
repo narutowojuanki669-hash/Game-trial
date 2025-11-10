@@ -1,5 +1,6 @@
-// wsClient.js - frontend connection and UI logic
-// Update BACKEND to your backend URL (no trailing slash)
+
+// wsClient.js - frontend connection and UI logic (final v2)
+// Set BACKEND to your backend URL (no trailing slash)
 const BACKEND = "https://town-of-shadows-server.onrender.com";
 
 let ws = null;
@@ -78,6 +79,7 @@ function renderGrid(players){
 }
 
 function applyFactionDisplay(mates){
+  playersState.forEach(p => { if (p._visibleRole) delete p._visibleRole; });
   mates.forEach(m=>{
     const p = playersState.find(x=>x.slot===m.slot);
     if (p) p._visibleRole = m.role;
