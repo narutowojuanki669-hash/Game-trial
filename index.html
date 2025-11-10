@@ -1,154 +1,68 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Town of Shadows</title>
-  <style>
-    body {
-      background-color: #0c0c0c;
-      color: #e0e0e0;
-      font-family: "Poppins", sans-serif;
-      text-align: center;
-      margin: 0;
-      padding: 0;
-    }
-    #game {
-      max-width: 900px;
-      margin: auto;
-      padding: 10px;
-    }
-    #playerGrid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 6px;
-      margin-top: 15px;
-    }
-    .player {
-      background-color: #222;
-      border-radius: 8px;
-      padding: 8px;
-      font-size: 13px;
-    }
-    .dead { opacity: 0.4; }
-    #chatBox {
-      background: #111;
-      height: 180px;
-      overflow-y: auto;
-      padding: 5px;
-      border: 1px solid #333;
-      margin: 10px auto;
-      width: 95%;
-      text-align: left;
-      font-size: 13px;
-    }
-    #controls {
-      display: flex;
-      justify-content: center;
-      gap: 6px;
-      margin-top: 10px;
-    }
-    button {
-      background: #333;
-      color: #eee;
-      border: none;
-      border-radius: 5px;
-      padding: 8px 12px;
-      cursor: pointer;
-    }
-    #tutorialPopup, #rulesPopup {
-      display: none;
-      position: fixed;
-      top: 10%;
-      left: 50%;
-      transform: translateX(-50%);
-      background: #151515;
-      border: 2px solid #666;
-      border-radius: 10px;
-      width: 80%;
-      max-width: 480px;
-      height: 70%;
-      overflow-y: auto;
-      z-index: 1000;
-      color: #f0f0f0;
-      padding: 15px;
-      text-align: left;
-    }
-    .closeBtn {
-      position: absolute;
-      top: 5px;
-      right: 10px;
-      cursor: pointer;
-      color: #ff7070;
-      font-weight: bold;
-    }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Town of Shadows</title>
+<style>
+  body { background:#080808; color:#eee; font-family: Arial, sans-serif; margin:0; }
+  .topbar { position:fixed; top:0; left:0; right:0; background:#111; color:#fff; padding:10px; z-index:50; }
+  .phaseBar { height:8px; background:#333; border-radius:4px; overflow:hidden; margin-top:6px; }
+  .phaseFill { height:100%; width:0%; transition: width 1s linear; background:linear-gradient(90deg,#f1c40f,#f39c12); }
+  .container { padding:80px 12px 20px; max-width:1000px; margin:auto; }
+  #playerGrid { display:grid; grid-template-columns: repeat(5, 1fr); gap:8px; }
+  .player { background:#111; padding:10px; border-radius:8px; text-align:center; cursor:pointer; color:#ddd; }
+  .player.dead { opacity:0.35; text-decoration:line-through; }
+  .player .role { display:block; font-size:12px; color:#9ae6b4; margin-top:6px; }
+  #votePanel { margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .voteBtn { background:#222; border:1px solid #444; color:#fff; padding:8px 10px; border-radius:6px; cursor:pointer; }
+  #chatBox { background:#0b0b0b; height:180px; overflow:auto; padding:8px; border-radius:8px; border:1px solid #222; margin-top:12px; }
+  #controls { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  input[type=text] { padding:8px; border-radius:6px; border:1px solid #333; background:#0b0b0b; color:#fff; width:200px; }
+  button { padding:8px 10px; border-radius:6px; background:#222; color:#fff; border:1px solid #333; cursor:pointer; }
+  #statusLine { margin-bottom:6px; color:#ddd; }
+  .skip { background:#555 !important; }
+  .selected { outline:2px solid #f39c12; }
+  @media (max-width:600px) {
+    #playerGrid { grid-template-columns: repeat(4, 1fr); }
+  }
+</style>
 </head>
 <body>
-  <div id="game">
-    <h1>🏙️ Town of Shadows</h1>
+  <div class="topbar">
+    <div id="phaseLabel">Phase: —</div>
+    <div class="phaseBar"><div id="phaseFill" class="phaseFill"></div></div>
+  </div>
 
+  <div class="container">
     <div id="connect">
-      <input id="roomId" placeholder="Room ID" />
-      <input id="playerName" placeholder="Your Name" />
-      <button onclick="createRoom()">Create Room</button>
-      <button onclick="joinRoom()">Join Room</button>
+      <input id="playerName" placeholder="Your name" />
+      <input id="roomId" placeholder="Room ID (leave blank to create)" />
+      <button onclick="createOrJoin()">Create / Join</button>
+      <button onclick="startGame()">Start Game</button>
+      <div id="statusLine">Not connected</div>
     </div>
 
-    <div id="gameplay" style="display:none;">
-      <h3 id="statusText"></h3>
-      <div id="phaseText"></div>
+    <div id="gameArea" style="display:none;">
       <div id="playerGrid"></div>
 
-      <div id="controls">
-        <button onclick="startGame()">Start Game</button>
-        <button onclick="showRules()">Rules</button>
+      <div id="votePanel" style="display:none;">
+        <div id="voteControls">
+          <button class="voteBtn" onclick="castVote('skip')" id="skipBtn">Skip</button>
+          <button class="voteBtn" onclick="confirmVote()" id="confirmBtn">Confirm Vote</button>
+          <button class="voteBtn" onclick="changeVote()" id="changeBtn">Change Vote</button>
+        </div>
+        <div id="voteMsg" style="margin-left:10px;color:#ccc;"></div>
       </div>
 
       <div id="chatBox"></div>
-      <input id="chatInput" placeholder="Type message..." onkeydown="if(event.key==='Enter')sendChat();" />
-      <button onclick="sendChat()">Send</button>
+      <div style="margin-top:8px;">
+        <input id="chatInput" type="text" placeholder="Type message or number to vote..." />
+        <button onclick="sendChat()">Send</button>
+      </div>
     </div>
   </div>
 
-  <!-- Tutorial popup -->
-  <div id="tutorialPopup">
-    <div class="closeBtn" onclick="closeTutorial()">✖</div>
-    <h3>Welcome to Town of Shadows!</h3>
-    <p>This is a strategic social deduction game between the Town, Mafia, and Cult factions. 
-    At night, players use their skills (heal, kill, protect, convert, etc). 
-    During the day, everyone discusses and votes to eliminate suspects.</p>
-    <p>Use logic and teamwork to uncover the truth. 
-    If you’re Mafia or Cult, coordinate secretly to take over the town.</p>
-    <p><b>Good luck!</b></p>
-    <button onclick="closeTutorial()">Got it!</button>
-  </div>
-
-  <!-- Rules popup -->
-  <div id="rulesPopup">
-    <div class="closeBtn" onclick="closeRules()">✖</div>
-    <h2>📜 Game Rules & Roles</h2>
-    <p><b>Objective:</b> Each faction wins by eliminating all others.</p>
-    <ul>
-      <li><b>Town:</b> Find and eliminate all Mafia. Cult doesn’t stop your win.</li>
-      <li><b>Mafia:</b> Eliminate the Town. You win if only Mafia remain or equal Cult count.</li>
-      <li><b>Cult:</b> Recruit others to your side until you dominate the town.</li>
-      <li><b>Doctor:</b> Heal one target each night (can self-heal). Prevents death except from Beastman.</li>
-      <li><b>Vigilante:</b> May shoot Mafia; fails if shooting non-Mafia.</li>
-      <li><b>Spy:</b> Can contact Mafia or learn a target’s role if non-Mafia.</li>
-      <li><b>Fanatic:</b> Becomes linked to Cult after contact; visible only after that.</li>
-      <li><b>Beastman:</b> Contacts to awaken; their attacks ignore Doctor/Bodyguard protection.</li>
-    </ul>
-    <p>Day/Night Cycle:</p>
-    <ul>
-      <li>Night 1 starts immediately.</li>
-      <li>Night = 40s for skills and faction chat.</li>
-      <li>Day discussion = 60s, then 20s voting, 10s defence, 10s verdict.</li>
-    </ul>
-    <p>Use chat to accuse, discuss, and vote (type player number to vote).</p>
-    <p>Click "Got it!" on tutorial to start playing.</p>
-  </div>
-
-  <script src="wsClient.js"></script>
+<script src="wsClient.js"></script>
 </body>
 </html>
