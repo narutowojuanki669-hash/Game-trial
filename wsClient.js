@@ -1,168 +1,121 @@
-// wsClient.js - Updated client to show vote UI and faction mates in grid
-export const BACKEND = "https://town-of-shadows-server.onrender.com";
+// wsClient.js - handles game websocket + UI updates
 
+const BACKEND = "https://town-of-shadows-server.onrender.com"; // update if backend changes
 let ws = null;
-let currentRoom = null;
 let mySlot = null;
-let myName = null;
-let externalHandler = null;
+let myName = "";
+let myRole = "";
+let roomId = null;
+let phase = "";
+let playerMap = {};
 
-export async function createAndJoin(roomId, name) {
-  myName = name || "joiboi";
-  let chosenRoom = roomId && roomId.trim() ? roomId.trim() : null;
-  if (!chosenRoom) {
-    const res = await fetch(`${BACKEND}/create-room`, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({host_name: myName})
-    });
-    if (!res.ok) {
-      const txt = await res.text(); throw new Error(txt);
-    }
-    const data = await res.json();
-    chosenRoom = data.roomId;
-  }
-  const joinRes = await fetch(`${BACKEND}/join-room`, {
+async function createRoom() {
+  const name = document.getElementById("playerName").value || "Host";
+  const res = await fetch(`${BACKEND}/create-room`, {
     method: "POST",
-    headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({roomId: chosenRoom, name: myName})
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ host_name: name }),
   });
-  if (!joinRes.ok) {
-    const t = await joinRes.text(); throw new Error(t);
-  }
-  const j = await joinRes.json();
-  currentRoom = chosenRoom;
-  mySlot = j.slot;
-  connectWS(currentRoom, (m) => {
-    if (externalHandler) externalHandler(m);
-  });
-  setTimeout(()=> { if (ws && ws.readyState === WebSocket.OPEN) identify(mySlot); }, 400);
-  return {roomId: chosenRoom, slot: mySlot, role: j.role, room: j.room};
+  const data = await res.json();
+  roomId = data.roomId;
+  joinRoom(roomId);
 }
 
-export function connectWS(roomId, onMsg) {
-  if (!roomId) throw new Error("roomId required for connectWS");
-  const wsUrl = `${BACKEND.replace(/^http/, "ws")}/ws/${roomId}`;
-  ws = new WebSocket(wsUrl);
-  ws.onopen = () => {
-    console.log("WS open", wsUrl);
-    if (onMsg) onMsg({type:"system", text:"ws_open"});
-    if (mySlot) identify(mySlot);
-  };
+async function joinRoom(id = null) {
+  roomId = id || document.getElementById("roomId").value;
+  myName = document.getElementById("playerName").value || "Player";
+  const res = await fetch(`${BACKEND}/join-room`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ roomId, name: myName }),
+  });
+  const data = await res.json();
+  mySlot = data.slot;
+  myRole = data.role;
+  document.getElementById("connect").style.display = "none";
+  document.getElementById("gameplay").style.display = "block";
+  document.getElementById("statusText").innerText = `Room: ${roomId} | Role: ${myRole}`;
+  openWS();
+}
+
+function openWS() {
+  ws = new WebSocket(`${BACKEND.replace("https", "wss")}/ws/${roomId}`);
   ws.onmessage = (ev) => {
-    let parsed;
-    try { parsed = JSON.parse(ev.data); } catch(e) { console.error("bad json", e, ev.data); return; }
-    if (onMsg) onMsg(parsed);
+    const msg = JSON.parse(ev.data);
+    handleMsg(msg);
   };
-  ws.onclose = () => {
-    console.log("WS closed; reconnecting in 3s");
-    if (onMsg) onMsg({type:"system", text:"ws_closed"});
-    setTimeout(()=> {
-      try { connectWS(roomId, onMsg); } catch(e){ console.error(e); }
-    }, 3000);
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: "identify", slot: mySlot }));
   };
-  ws.onerror = (e) => console.error("WS error", e);
-  return ws;
 }
 
-export function identify(slot) {
-  mySlot = slot;
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({type:"identify", slot}));
+function sendChat() {
+  const input = document.getElementById("chatInput");
+  const text = input.value.trim();
+  if (!text) return;
+  ws.send(JSON.stringify({ type: "chat", from: myName, text }));
+  input.value = "";
 }
 
-export function sendChat(text, channel="public") {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  const payload = {type:"chat", from: myName || `Player ${mySlot}`, channel, text};
-  ws.send(JSON.stringify(payload));
+function startGame() {
+  ws.send(JSON.stringify({ type: "start_game" }));
 }
 
-export function sendAction(action) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({type:"player_action", action}));
-}
-
-export function accuse(from, target) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({type:"accuse", from, target}));
-}
-
-export function verdictVote(from, choice) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({type:"verdict_vote", from, choice}));
-}
-
-export function vote(from, target) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({type:"vote", from, target}));
-}
-
-export async function startGame(roomId) {
-  if (!roomId && !currentRoom) throw new Error("roomId required");
-  const rid = roomId || currentRoom;
-  const res = await fetch(`${BACKEND}/start-game/${rid}`, {method:"POST"});
-  const j = await res.json();
-  return j;
-}
-
-export async function fetchRoom(roomId) {
-  const rid = roomId || currentRoom;
-  const r = await fetch(`${BACKEND}/room/${rid}`);
-  return await r.json();
-}
-
-export function closeWS() {
-  if (ws) ws.close();
-  ws = null; currentRoom = null; mySlot = null; myName = null;
-}
-
-export function setExternalHandler(fn) { externalHandler = fn; }
-
-/* UI helpers that the existing index.html will use via the externalHandler callback:
-   - When a phase message with players list arrives, the frontend should call wsClient.showVoteUI(players)
-   - When a faction_mates message arrives, the frontend should update its grid to show roles for those slots
-*/
-
-export function showVoteUI(playersArray) {
-  let container = document.getElementById("dynamic-vote-ui");
-  if (!container) {
-    container = document.createElement("div");
-    container.id = "dynamic-vote-ui";
-    container.style.marginTop = "8px";
-    container.style.display = "block";
-    const parent = document.querySelector(".card") || document.body;
-    parent.appendChild(container);
+function handleMsg(msg) {
+  const chatBox = document.getElementById("chatBox");
+  if (msg.type === "system") {
+    chatBox.innerHTML += `<div style="color:#ff8;">${msg.text}</div>`;
   }
-  container.innerHTML = "";
-  const title = document.createElement("div");
-  title.style.fontWeight = "700";
-  title.style.marginBottom = "6px";
-  title.textContent = "Vote (type a number in chat or use the dropdown):";
-  container.appendChild(title);
-  const sel = document.createElement("select");
-  sel.id = "dynamicVoteSelect";
-  sel.style.padding = "8px";
-  sel.style.borderRadius = "6px";
-  sel.style.marginRight = "8px";
-  const list = Array.isArray(playersArray) ? playersArray.filter(p => p.alive).map(p => ({val: String(p.slot), label: `Player ${p.slot}`})) : [];
-  list.forEach(it => {
-    const o = document.createElement("option");
-    o.value = it.val; o.textContent = it.label;
-    sel.appendChild(o);
-  });
-  container.appendChild(sel);
-  const btn = document.createElement("button");
-  btn.textContent = "Vote";
-  btn.onclick = () => {
-    const choice = sel.value;
-    if (!choice) return alert("Select a player to vote");
-    vote(myName || `Player ${mySlot}`, choice);
-    container.style.display = "none";
-  };
-  container.appendChild(btn);
+  if (msg.type === "chat") {
+    const c = msg.channel === "mafia" ? "#f44" : msg.channel === "cult" ? "#4f4" : "#ccc";
+    chatBox.innerHTML += `<div style="color:${c}"><b>${msg.from}:</b> ${msg.text}</div>`;
+  }
+  if (msg.type === "phase") {
+    phase = msg.phase;
+    document.getElementById("phaseText").innerText = `🕒 ${msg.phase} (${msg.seconds}s)`;
+  }
+  if (msg.type === "private_role") {
+    myRole = msg.role;
+    document.getElementById("statusText").innerText = `Room: ${roomId} | Role: ${myRole}`;
+  }
+  if (msg.type === "room") updateGrid(msg.room.players);
+  if (msg.type === "tutorial" && msg.show) showTutorial();
+  if (msg.type === "faction_mates") showFaction(msg.mates);
+  chatBox.scrollTop = chatBox.scrollHeight;
 }
 
-export function hideVoteUI() {
-  const container = document.getElementById("dynamic-vote-ui");
-  if (container) container.style.display = "none";
+function updateGrid(players) {
+  const grid = document.getElementById("playerGrid");
+  grid.innerHTML = "";
+  players.forEach((p) => {
+    const div = document.createElement("div");
+    div.className = "player";
+    if (!p.alive) div.classList.add("dead");
+    let inner = `#${p.slot} ${p.name}`;
+    if (p.revealed && p.role) inner += `<br><small>${p.role}</small>`;
+    div.innerHTML = inner;
+    grid.appendChild(div);
+    playerMap[p.slot] = p.name;
+  });
+}
+
+function showTutorial() {
+  document.getElementById("tutorialPopup").style.display = "block";
+}
+function closeTutorial() {
+  document.getElementById("tutorialPopup").style.display = "none";
+}
+
+function showRules() {
+  document.getElementById("rulesPopup").style.display = "block";
+}
+function closeRules() {
+  document.getElementById("rulesPopup").style.display = "none";
+}
+
+function showFaction(mates) {
+  const chatBox = document.getElementById("chatBox");
+  if (!mates || mates.length === 0) return;
+  let text = "Faction Mates:\n" + mates.map(m => `#${m.slot} ${m.name} (${m.role})`).join(", ");
+  chatBox.innerHTML += `<div style="color:#6ff;">${text}</div>`;
 }
