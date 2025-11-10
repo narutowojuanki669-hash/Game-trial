@@ -3,35 +3,42 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Town of Shadows</title>
+<title>Town of Shadows - Game Trial</title>
 <style>
-  body { background:#080808; color:#eee; font-family: Arial, sans-serif; margin:0; }
-  .topbar { position:fixed; top:0; left:0; right:0; background:#111; color:#fff; padding:10px; z-index:50; }
-  .phaseBar { height:8px; background:#333; border-radius:4px; overflow:hidden; margin-top:6px; }
-  .phaseFill { height:100%; width:0%; transition: width 1s linear; background:linear-gradient(90deg,#f1c40f,#f39c12); }
-  .container { padding:80px 12px 20px; max-width:1000px; margin:auto; }
+  body { background:#0b0b0d; color:#eee; font-family:Inter, Arial; margin:0; }
+  .topbar { position:fixed; top:0; left:0; right:0; background:#0f1720; color:#fff; padding:10px 12px; z-index:60; display:flex; align-items:center; justify-content:space-between; }
+  .left { display:flex; flex-direction:column; }
+  .phaseLabel { font-weight:600; }
+  .phaseBar { height:8px; background:#111827; border-radius:6px; overflow:hidden; margin-top:8px; width:320px; }
+  .phaseFill { height:100%; width:0%; transition: width 1s linear; background:linear-gradient(90deg,#f59e0b,#f97316); }
+  .rulesBtn { background:#111827; color:#f3f4f6; border:1px solid #374151; padding:8px 10px; border-radius:8px; cursor:pointer; }
+  .container { padding:100px 12px 20px; max-width:1100px; margin:auto; }
   #playerGrid { display:grid; grid-template-columns: repeat(5, 1fr); gap:8px; }
-  .player { background:#111; padding:10px; border-radius:8px; text-align:center; cursor:pointer; color:#ddd; }
+  .player { background:#0b1220; padding:10px; border-radius:10px; text-align:center; cursor:pointer; color:#e6edf3; border:1px solid #1f2937; }
   .player.dead { opacity:0.35; text-decoration:line-through; }
-  .player .role { display:block; font-size:12px; color:#9ae6b4; margin-top:6px; }
-  #votePanel { margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  .voteBtn { background:#222; border:1px solid #444; color:#fff; padding:8px 10px; border-radius:6px; cursor:pointer; }
-  #chatBox { background:#0b0b0b; height:180px; overflow:auto; padding:8px; border-radius:8px; border:1px solid #222; margin-top:12px; }
-  #controls { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
-  input[type=text] { padding:8px; border-radius:6px; border:1px solid #333; background:#0b0b0b; color:#fff; width:200px; }
-  button { padding:8px 10px; border-radius:6px; background:#222; color:#fff; border:1px solid #333; cursor:pointer; }
-  #statusLine { margin-bottom:6px; color:#ddd; }
-  .skip { background:#555 !important; }
-  .selected { outline:2px solid #f39c12; }
-  @media (max-width:600px) {
-    #playerGrid { grid-template-columns: repeat(4, 1fr); }
-  }
+  .roleLabel { display:block; font-size:12px; color:#9ae6b4; margin-top:6px; font-weight:600; }
+  #votePanel { margin-top:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .voteBtn { background:#111827; border:1px solid #374151; color:#fff; padding:8px 10px; border-radius:8px; cursor:pointer; }
+  #chatBox { background:#071019; height:180px; overflow:auto; padding:8px; border-radius:10px; border:1px solid #0b1220; margin-top:12px; }
+  input[type=text] { padding:8px; border-radius:8px; border:1px solid #1f2937; background:#031220; color:#fff; width:200px; }
+  button { padding:8px 10px; border-radius:8px; background:#0b1220; color:#fff; border:1px solid #1f2937; cursor:pointer; }
+  .selected { outline:3px solid #f97316; }
+  .modal { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(2,6,23,0.6); display:flex; align-items:center; justify-content:center; z-index:100; }
+  .modalContent { background:#020617; padding:18px; border-radius:10px; width:90%; max-width:720px; max-height:80vh; overflow:auto; border:1px solid #263044; }
+  .small { font-size:13px; color:#cbd5e1; }
+  @media (max-width:700px){ #playerGrid{grid-template-columns:repeat(4,1fr);} .phaseBar{width:220px;} }
 </style>
 </head>
 <body>
   <div class="topbar">
-    <div id="phaseLabel">Phase: —</div>
-    <div class="phaseBar"><div id="phaseFill" class="phaseFill"></div></div>
+    <div class="left">
+      <div class="phaseLabel" id="phaseLabel">Phase: —</div>
+      <div class="phaseBar"><div id="phaseFill" class="phaseFill"></div></div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <button class="rulesBtn" onclick="openRules()">Rules</button>
+      <div id="statusLine">Not connected</div>
+    </div>
   </div>
 
   <div class="container">
@@ -40,13 +47,11 @@
       <input id="roomId" placeholder="Room ID (leave blank to create)" />
       <button onclick="createOrJoin()">Create / Join</button>
       <button onclick="startGame()">Start Game</button>
-      <div id="statusLine">Not connected</div>
     </div>
 
     <div id="gameArea" style="display:none;">
-      <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <div><strong id="lobbyLabel">Lobby</strong></div>
-        <!-- Start Game button inside game area for host -->
         <div><button onclick="startGame()">Start Game</button></div>
       </div>
 
@@ -58,14 +63,30 @@
           <button class="voteBtn" onclick="confirmVote()" id="confirmBtn">Confirm Vote</button>
           <button class="voteBtn" onclick="changeVote()" id="changeBtn">Change Vote</button>
         </div>
-        <div id="voteMsg" style="margin-left:10px;color:#ccc;"></div>
+        <div id="voteMsg" style="margin-left:10px;color:#cbd5e1;"></div>
       </div>
 
       <div id="chatBox"></div>
-      <div style="margin-top:8px;">
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
         <input id="chatInput" type="text" placeholder="Type message or number to vote..." />
         <button onclick="sendChat()">Send</button>
       </div>
+    </div>
+  </div>
+
+  <div id="rulesModal" class="modal" style="display:none;">
+    <div class="modalContent">
+      <h3>Town of Shadows — Rules</h3>
+      <div class="small">
+        <p><strong>Objective</strong>: Town wins by eliminating all Mafia. Citizens don't need to eliminate Cult or Neutrals.</p>
+        <p><strong>Phases</strong>: Night (40s) → Day discussion (60s) → Vote (20s) → Defence (10s) → Final verdict (10s).</p>
+        <p><strong>Roles</strong>: Mafia (Godfather, Mafioso, Spy, Beastman...), Town (Doctor, Detective, Bodyguard...), Cult (Leader, Fanatic...), Neutrals (Jester, Executioner...)</p>
+        <p><strong>Doctor</strong>: Can heal any player multiple nights. Heals prevent death but not cult conversion. Beastman ignores heal.</p>
+        <p><strong>Vigilante</strong>: Can only successfully shoot if the target is Mafia (including culted mafia); otherwise shot fails.</p>
+        <p><strong>Spy</strong>: Mafia's spy who must contact to reveal some powers; follows contact rules like Fanatic.</p>
+        <p>... (full role descriptions included in final build)</p>
+      </div>
+      <div style="text-align:right;margin-top:10px;"><button onclick="closeRules()">Close</button></div>
     </div>
   </div>
 
