@@ -44,6 +44,12 @@
     </div>
 
     <div id="gameArea" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div><strong id="lobbyLabel">Lobby</strong></div>
+        <!-- Start Game button inside game area for host -->
+        <div><button onclick="startGame()">Start Game</button></div>
+      </div>
+
       <div id="playerGrid"></div>
 
       <div id="votePanel" style="display:none;">
