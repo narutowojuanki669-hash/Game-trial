@@ -40,6 +40,7 @@ function joinRoom() {
     myRole = d.role;
     document.getElementById("statusLine").innerText = `Room ${roomId} | You: ${myName} (slot ${mySlot})`;
     openWS();
+    // show game area (but keep host control Start Game inside game area)
     document.getElementById("connect").style.display = "none";
     document.getElementById("gameArea").style.display = "block";
   }).catch(e=>{
@@ -49,12 +50,22 @@ function joinRoom() {
 
 function openWS() {
   ws = new WebSocket(`${BACKEND.replace("https","wss")}/ws/${roomId}`);
-  ws.onopen = ()=>{};
+  ws.onopen = ()=>{
+    // identify immediately so backend can attach ws_id and send private role
+    if (mySlot) {
+      ws.send(JSON.stringify({type:"identify", slot: mySlot}));
+    } else {
+      // as fallback try to send name
+      ws.send(JSON.stringify({type:"identify", slot: mySlot}));
+    }
+  };
   ws.onmessage = (ev)=>{ const msg = JSON.parse(ev.data); handleMsg(msg); };
   ws.onclose = ()=>{ document.getElementById("statusLine").innerText = "Disconnected"; };
+  ws.onerror = (e)=>{ console.error("WS error", e); };
 }
 
 function handleMsg(msg) {
+  if (!msg || typeof msg !== "object") return;
   if (msg.type === "system") addChat(`⚙️ ${msg.text}`);
   if (msg.type === "chat") addChat(`${msg.from}: ${msg.text}`);
   if (msg.type === "private_role") {
@@ -69,11 +80,16 @@ function handleMsg(msg) {
     handlePhase(msg.phase, msg.seconds, msg.players || null);
   }
   if (msg.type === "faction_mates") {
-    // show faction mates roles on grid by marking playersState
     applyFactionDisplay(msg.mates);
   }
   if (msg.type === "tutorial" && msg.show) {
+    // show a simple popup once
     alert("Tutorial: Read the rules before playing.");
+  }
+  if (msg.type === "accused_update") {
+    // optionally show who is accused
+    if (msg.accused) addChat(`⚖️ ${msg.accused} is accused.`);
+    else addChat("No one is accused.");
   }
 }
 
@@ -94,7 +110,6 @@ function renderGrid(players) {
     if (p.revealed && p.role) {
       html += `<div class="role">${p.role}</div>`;
     } else {
-      // if we know faction-mate role was supplied earlier, show it
       if (p._visibleRole) html += `<div class="role">${p._visibleRole}</div>`;
     }
     el.innerHTML = html;
@@ -104,7 +119,6 @@ function renderGrid(players) {
 }
 
 function applyFactionDisplay(mates) {
-  // mates: [{slot, role, name, alive}]
   mates.forEach(m=>{
     const p = playersState.find(x=>x.slot===m.slot);
     if (p) {
@@ -117,16 +131,13 @@ function applyFactionDisplay(mates) {
 function onPlayerClick(slot) {
   const btn = document.getElementById("player-"+slot);
   if (!btn) return;
-  // only allow selecting alive players
   const p = playersState.find(x=>x.slot===slot);
   if (!p || !p.alive) return;
-  // select/deselect
   if (selectedVote === slot) {
     selectedVote = null;
     btn.classList.remove("selected");
     document.getElementById("voteMsg").innerText = "No vote selected";
   } else {
-    // clear previous
     if (selectedVote) {
       const prev = document.getElementById("player-"+selectedVote);
       if (prev) prev.classList.remove("selected");
@@ -138,7 +149,7 @@ function onPlayerClick(slot) {
 }
 
 function castVote(target) {
-  if (!ws) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
   if (target === "skip") {
     ws.send(JSON.stringify({type:"vote", from:myName, target:"skip"}));
     addChat(`You skipped voting`);
@@ -159,7 +170,6 @@ function confirmVote() {
 function changeVote() {
   if (!selectedVote) alert("Select a player first");
   else {
-    // just toggle selection so player can choose another
     const el = document.getElementById("player-"+selectedVote);
     if (el) el.classList.remove("selected");
     selectedVote = null;
@@ -170,19 +180,31 @@ function changeVote() {
 function sendChat() {
   const input = document.getElementById("chatInput");
   const text = input.value.trim();
-  if (!text) return;
-  // if numeric during voting, shorthand handled on backend; still send as chat so it's visible
+  if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
   ws.send(JSON.stringify({type:"chat", from:myName, text}));
   input.value = "";
+}
+
+function startGame() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    // fallback: call REST start endpoint
+    if (!roomId) return alert("No room selected");
+    fetch(`${BACKEND}/start-game/${roomId}`, {method:"POST"}).then(r=>r.json()).then(d=>{
+      addChat("Game start requested via HTTP.");
+    }).catch(e=>{
+      alert("Start request failed.");
+    });
+    return;
+  }
+  ws.send(JSON.stringify({type:"start_game"}));
+  addChat("Game start requested.");
 }
 
 function handlePhase(phaseName, seconds, playersList) {
   document.getElementById("phaseLabel").innerText = `Phase: ${phaseName}`;
   startPhaseTimer(seconds, phaseName);
-  // show or hide voting UI
   if (phaseName === "day_vote") {
     document.getElementById("votePanel").style.display = "flex";
-    // if backend included players to vote on, re-render grid with alive only
     if (playersList) {
       playersState = playersState.map(p=>{
         const remote = playersList.find(r=>r.slot===p.slot);
@@ -193,7 +215,6 @@ function handlePhase(phaseName, seconds, playersList) {
     }
   } else {
     document.getElementById("votePanel").style.display = "none";
-    // clear selection
     if (selectedVote) {
       const el = document.getElementById("player-"+selectedVote);
       if (el) el.classList.remove("selected");
@@ -206,7 +227,7 @@ function handlePhase(phaseName, seconds, playersList) {
 function startPhaseTimer(seconds, phaseName) {
   phaseSeconds = seconds;
   clearInterval(phaseTimer);
-  updateFill(1); // full at start
+  updateFill(1);
   phaseTimer = setInterval(()=>{
     phaseSeconds--;
     const pct = Math.max(0, phaseSeconds) / Math.max(1, seconds);
@@ -219,13 +240,11 @@ function updateFill(pct) {
   const fill = document.getElementById("phaseFill");
   if (!fill) return;
   fill.style.width = `${Math.round(pct*100)}%`;
-  // color by phase (yellow for day, purple for night)
   const label = document.getElementById("phaseLabel").innerText.toLowerCase();
   if (label.includes("night")) fill.style.background = "linear-gradient(90deg,#7f53ac,#5d35a9)";
   else fill.style.background = "linear-gradient(90deg,#f1c40f,#f39c12)";
 }
 
-// small helper to set BACKEND from UI if needed
 window.addEventListener('keydown', (e)=>{
   if (e.key === 'Enter') {
     const input = document.getElementById("chatInput");
