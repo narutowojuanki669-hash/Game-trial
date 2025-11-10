@@ -55,21 +55,13 @@ function handleMsg(msg){
   if (msg.type==="room"){ playersState = msg.room.players; renderGrid(playersState); }
   if (msg.type==="phase"){ handlePhase(msg.phase, msg.seconds, msg.players||null); }
   if (msg.type==="faction_mates"){
-    // only apply faction info after the game actually started
     if (gameStarted) applyFactionDisplay(msg.mates);
-    else {
-      // cache and apply after start
-      setTimeout(()=>{ applyFactionDisplay(msg.mates); }, 800);
-    }
+    else { setTimeout(()=>{ applyFactionDisplay(msg.mates); }, 800); }
   }
   if (msg.type==="accused_update"){ if (msg.accused) addChat(`⚖️ ${msg.accused} is accused.`); else addChat("No one is accused."); }
   if (msg.type==="game_started"){
     gameStarted = true;
     addChat("🕯️ " + (msg.text || "Game started"));
-    // request fresh room state
-    if (ws && ws.readyState===WebSocket.OPEN){
-      // no explicit request endpoint; room updates are broadcasted by server on start
-    }
   }
 }
 
